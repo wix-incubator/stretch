@@ -19,6 +19,37 @@ pub struct ComputeResult {
     pub size: Size<f32>,
 }
 
+enum GrowthLimit {
+    Finite(f32),
+    Infinite,
+}
+
+struct TrackSize {
+    base_size: f32,
+    growth_limit: GrowthLimit,
+}
+
+impl TrackSize {
+    fn resolve_size(size: &TrackSizeValues, container_size: &Number) -> Option<f32> {
+        match size {
+            TrackSizeValues::Points(pts) => Some(*pts),
+            TrackSizeValues::Percent(percentage) => match container_size {
+                Number::Undefined => None,
+                Number::Defined(pts) => Some(pts * percentage),
+            },
+            _ => None,
+        }
+    }
+    fn new(definition: &TrackSizeDefinition, container_size: &Number) -> Self {
+        let base_size = TrackSize::resolve_size(&definition.min, container_size).unwrap_or(0.0);
+        let growth_limit = match TrackSize::resolve_size(&definition.max, container_size) {
+            None => GrowthLimit::Infinite,
+            Some(value) => GrowthLimit::Finite(value),
+        };
+        Self { growth_limit, base_size }
+    }
+}
+
 struct FlexItem {
     node: NodeId,
 
@@ -56,18 +87,29 @@ struct FlexLine {
     offset_cross: f32,
 }
 
+struct ResolvedChild {
+    width: Number,
+    height: Number,
+    start_main: Number,
+    start_cross: Number,
+    end_main: Number,
+    end_cross: Number,
+}
+
 impl Forest {
     pub(crate) fn compute(&mut self, root: NodeId, size: Size<Number>) -> Result<(), Box<dyn Any>> {
-        let style = self.nodes[root].style;
-        let has_root_min_max = style.min_size.width.is_defined()
-            || style.min_size.height.is_defined()
-            || style.max_size.width.is_defined()
-            || style.max_size.height.is_defined();
+        let root_size = self.nodes[root].style.size;
+        let root_min_size = self.nodes[root].style.min_size;
+        let root_max_size = self.nodes[root].style.max_size;
+        let has_root_min_max = root_min_size.width.is_defined()
+            || root_min_size.height.is_defined()
+            || root_max_size.width.is_defined()
+            || root_max_size.height.is_defined();
 
         let result = if has_root_min_max {
             let first_pass = self.compute_internal(
                 root,
-                Size { width: style.size.width.resolve(size.width), height: style.size.height.resolve(size.height) },
+                Size { width: root_size.width.resolve(size.width), height: root_size.height.resolve(size.height) },
                 size,
                 false,
             )?;
@@ -78,14 +120,14 @@ impl Forest {
                     width: first_pass
                         .size
                         .width
-                        .maybe_max(style.min_size.width.resolve(size.width))
-                        .maybe_min(style.max_size.width.resolve(size.width))
+                        .maybe_max(root_min_size.width.resolve(size.width))
+                        .maybe_min(root_max_size.width.resolve(size.width))
                         .to_number(),
                     height: first_pass
                         .size
                         .height
-                        .maybe_max(style.min_size.height.resolve(size.height))
-                        .maybe_min(style.max_size.height.resolve(size.height))
+                        .maybe_max(root_min_size.height.resolve(size.height))
+                        .maybe_min(root_max_size.height.resolve(size.height))
                         .to_number(),
                 },
                 size,
@@ -94,7 +136,7 @@ impl Forest {
         } else {
             self.compute_internal(
                 root,
-                Size { width: style.size.width.resolve(size.width), height: style.size.height.resolve(size.height) },
+                Size { width: root_size.width.resolve(size.width), height: root_size.height.resolve(size.height) },
                 size,
                 true,
             )?
@@ -125,40 +167,160 @@ impl Forest {
     }
 
     #[allow(clippy::cognitive_complexity)]
-    fn compute_internal(
+    fn computer_internal_grid(
         &mut self,
         node: NodeId,
         node_size: Size<Number>,
         parent_size: Size<Number>,
         perform_layout: bool,
+        margin: Rect<f32>,
+        padding: Rect<f32>,
+        border: Rect<f32>,
+        padding_border: Rect<f32>,
+        node_inner_size: Size<Number>,
     ) -> Result<ComputeResult, Box<dyn Any>> {
-        self.nodes[node].is_dirty = false;
+        // Grid Item Placing - for now minimal no support for auto placement
+        let visible_children: Vec<NodeId> = self.children[node]
+            .iter()
+            .filter(|child| self.nodes[**child].style.display != Display::None)
+            .map(|child| child.clone())
+            .collect();
 
-        // First we check if we have a result for the given input
-        if let Some(ref cache) = self.nodes[node].layout_cache {
-            if cache.perform_layout || !perform_layout {
-                let width_compatible = if let Number::Defined(width) = node_size.width {
-                    (width - cache.result.size.width).abs() < f32::EPSILON
-                } else {
-                    cache.node_size.width.is_undefined()
-                };
-
-                let height_compatible = if let Number::Defined(height) = node_size.height {
-                    (height - cache.result.size.height).abs() < f32::EPSILON
-                } else {
-                    cache.node_size.height.is_undefined()
-                };
-
-                if width_compatible && height_compatible {
-                    return Ok(cache.result.clone());
-                }
-
-                if cache.node_size == node_size && cache.parent_size == parent_size {
-                    return Ok(cache.result.clone());
-                }
+        fn max_track_index(start: i32, end: i32) -> i32 {
+            let start: i32 = start.abs();
+            let end: i32 = end.abs();
+            if end < start {
+                start
+            } else {
+                end
             }
         }
 
+        let max_row: i32 = visible_children
+            .iter()
+            .map(|child| match &self.nodes[*child].style.grid_area {
+                GridArea::Auto => 0,
+                GridArea::Manual { row_start, row_end, .. } => max_track_index(*row_start, *row_end),
+            })
+            .max()
+            .unwrap_or(0);
+
+        let max_column: i32 = visible_children
+            .iter()
+            .map(|child| match &self.nodes[*child].style.grid_area {
+                GridArea::Auto => 0,
+                GridArea::Manual { column_start, column_end, .. } => max_track_index(*column_start, *column_end),
+            })
+            .max()
+            .unwrap_or(0);
+
+        let mut grid_areas: Vec<(&usize, Rect<i32>)> = visible_children
+            .iter()
+            .map(|child| (child, &self.nodes[*child].style))
+            .map(|(child, style)| {
+                (
+                    child,
+                    match style.grid_area {
+                        GridArea::Auto => Rect { start: 0, end: 0, top: 0, bottom: 0 },
+                        GridArea::Manual { row_start, row_end, column_start, column_end } => Rect {
+                            start: if column_start < 0 { max_column + column_start } else { column_start },
+                            end: if column_end < 0 { max_column + column_end } else { column_end },
+                            top: if row_start < 0 { max_row + row_start } else { row_start },
+                            bottom: if row_end < 0 { max_row + row_end } else { row_end },
+                        },
+                    },
+                )
+            })
+            .collect();
+
+        let mut track_sizing = |direction, cross_sizes: Vec<f32>, gap| -> Vec<f32> {
+            let container_style = &self.nodes[node].style;
+            let track_defs: Vec<TrackSizeDefinition> = match direction {
+                FlexDirection::Column => (1..=max_row)
+                    .map(|index| match &container_style.grid_rows_template.defined {
+                        None => container_style.grid_rows_template.fill,
+                        Some(defs) => *defs.get(index as usize).unwrap_or(&container_style.grid_rows_template.fill),
+                    })
+                    .collect(),
+                FlexDirection::Row => (1..=max_column)
+                    .map(|index| match &container_style.grid_columns_template.defined {
+                        None => container_style.grid_columns_template.fill,
+                        Some(defs) => *defs.get(index as usize).unwrap_or(&container_style.grid_columns_template.fill),
+                    })
+                    .collect(),
+                _ => unreachable!(),
+            };
+
+            // Initialize Track Sizes
+            let tracks: Vec<TrackSize> =
+                track_defs.iter().map(|def| TrackSize::new(def, &node_size.main(direction))).collect();
+            // Resolve Intrinsic Track Sizes
+            grid_areas.sort_by(|(_, grid_a), (_, grid_b)| {
+                grid_a.size(direction).partial_cmp(&grid_b.size(direction)).unwrap()
+            });
+            for (child, grid_area) in grid_areas.iter() {
+                match grid_area.size(direction) {
+                    1 => { // Size tracks to fit non-spanning items
+                    }
+                    _ => {}
+                }
+            }
+            vec![]
+        };
+
+        track_sizing(FlexDirection::Column, vec![], 0.0);
+        // Skipped for now - only concrete grid area supported
+
+        Ok(ComputeResult { size: Size { width: 0.0, height: 0.0 } })
+    }
+
+    fn resolve_child_size(&self, child: NodeId, direction: FlexDirection, container_size: Size<f32>) -> ResolvedChild {
+        let container_width = container_size.width.to_number();
+        let container_height = container_size.height.to_number();
+        let child_style = &self.nodes[child].style;
+
+        let start =
+            child_style.position.start.resolve(container_width) + child_style.margin.start.resolve(container_width);
+        let end = child_style.position.end.resolve(container_width) + child_style.margin.end.resolve(container_width);
+        let top = child_style.position.top.resolve(container_height) + child_style.margin.top.resolve(container_height);
+        let bottom =
+            child_style.position.bottom.resolve(container_height) + child_style.margin.bottom.resolve(container_height);
+
+        let is_row = direction.is_row();
+        let (start_main, end_main) = if is_row { (start, end) } else { (top, bottom) };
+        let (start_cross, end_cross) = if is_row { (top, bottom) } else { (start, end) };
+
+        let width = child_style
+            .size
+            .width
+            .resolve(container_width)
+            .maybe_max(child_style.min_size.width.resolve(container_width))
+            .maybe_min(child_style.max_size.width.resolve(container_width))
+            .or_else(if start.is_defined() && end.is_defined() { container_width - start - end } else { Undefined });
+
+        let height = child_style
+            .size
+            .height
+            .resolve(container_height)
+            .maybe_max(child_style.min_size.height.resolve(container_height))
+            .maybe_min(child_style.max_size.height.resolve(container_height))
+            .or_else(if top.is_defined() && bottom.is_defined() { container_height - top - bottom } else { Undefined });
+        ResolvedChild { width, height, start_cross, start_main, end_cross, end_main }
+    }
+
+    #[allow(clippy::cognitive_complexity)]
+    fn computer_internal_flex(
+        &mut self,
+        node: NodeId,
+        node_size: Size<Number>,
+        parent_size: Size<Number>,
+        perform_layout: bool,
+        margin: Rect<f32>,
+        _padding: Rect<f32>,
+        border: Rect<f32>,
+        padding_border: Rect<f32>,
+        node_inner_size: Size<Number>,
+    ) -> Result<ComputeResult, Box<dyn Any>> {
         // Define some general constants we will need for the remainder
         // of the algorithm.
 
@@ -167,45 +329,8 @@ impl Forest {
         let is_column = dir.is_column();
         let is_wrap_reverse = self.nodes[node].style.flex_wrap == FlexWrap::WrapReverse;
 
-        let margin = self.nodes[node].style.margin.map(|n| n.resolve(parent_size.width).or_else(0.0));
-        let padding = self.nodes[node].style.padding.map(|n| n.resolve(parent_size.width).or_else(0.0));
-        let border = self.nodes[node].style.border.map(|n| n.resolve(parent_size.width).or_else(0.0));
-
-        let padding_border = Rect {
-            start: padding.start + border.start,
-            end: padding.end + border.end,
-            top: padding.top + border.top,
-            bottom: padding.bottom + border.bottom,
-        };
-
-        let node_inner_size = Size {
-            width: node_size.width - padding_border.horizontal(),
-            height: node_size.height - padding_border.vertical(),
-        };
-
         let mut container_size = Size { width: 0.0, height: 0.0 };
         let mut inner_container_size = Size { width: 0.0, height: 0.0 };
-
-        // If this is a leaf node we can skip a lot of this function in some cases
-        if self.children[node].is_empty() {
-            if node_size.width.is_defined() && node_size.height.is_defined() {
-                return Ok(ComputeResult { size: node_size.map(|s| s.or_else(0.0)) });
-            }
-
-            if let Some(ref measure) = self.nodes[node].measure {
-                let result = ComputeResult { size: measure(node_size)? };
-                self.nodes[node].layout_cache =
-                    Some(result::Cache { node_size, parent_size, perform_layout, result: result.clone() });
-                return Ok(result);
-            }
-
-            return Ok(ComputeResult {
-                size: Size {
-                    width: node_size.width.or_else(0.0) + padding_border.horizontal(),
-                    height: node_size.height.or_else(0.0) + padding_border.vertical(),
-                },
-            });
-        }
 
         // 9.2. Line Length Determination
 
@@ -276,7 +401,7 @@ impl Forest {
         // TODO - this does not follow spec. See commented out code below
         // 3. Determine the flex base size and hypothetical main size of each item:
         flex_items.iter_mut().try_for_each(|child| -> Result<(), Box<dyn Any>> {
-            let child_style = self.nodes[child.node].style;
+            let child_style = &self.nodes[child.node].style;
 
             // A. If the item has a definite used flex basis, that’s the flex base size.
 
@@ -1224,43 +1349,8 @@ impl Forest {
                 let container_width = container_size.width.to_number();
                 let container_height = container_size.height.to_number();
 
-                let child_style = self.nodes[child].style;
-
-                let start = child_style.position.start.resolve(container_width)
-                    + child_style.margin.start.resolve(container_width);
-                let end =
-                    child_style.position.end.resolve(container_width) + child_style.margin.end.resolve(container_width);
-                let top = child_style.position.top.resolve(container_height)
-                    + child_style.margin.top.resolve(container_height);
-                let bottom = child_style.position.bottom.resolve(container_height)
-                    + child_style.margin.bottom.resolve(container_height);
-
-                let (start_main, end_main) = if is_row { (start, end) } else { (top, bottom) };
-                let (start_cross, end_cross) = if is_row { (top, bottom) } else { (start, end) };
-
-                let width = child_style
-                    .size
-                    .width
-                    .resolve(container_width)
-                    .maybe_max(child_style.min_size.width.resolve(container_width))
-                    .maybe_min(child_style.max_size.width.resolve(container_width))
-                    .or_else(if start.is_defined() && end.is_defined() {
-                        container_width - start - end
-                    } else {
-                        Undefined
-                    });
-
-                let height = child_style
-                    .size
-                    .height
-                    .resolve(container_height)
-                    .maybe_max(child_style.min_size.height.resolve(container_height))
-                    .maybe_min(child_style.max_size.height.resolve(container_height))
-                    .or_else(if top.is_defined() && bottom.is_defined() {
-                        container_height - top - bottom
-                    } else {
-                        Undefined
-                    });
+                let ResolvedChild { width, height, start_main, end_main, start_cross, end_cross } =
+                    self.resolve_child_size(child, dir, container_size);
 
                 let result = self.compute_internal(
                     child,
@@ -1268,6 +1358,8 @@ impl Forest {
                     Size { width: container_width, height: container_height },
                     true,
                 )?;
+
+                let child_style = &self.nodes[child].style;
 
                 let free_main_space = container_size.main(dir)
                     - result
@@ -1341,6 +1433,84 @@ impl Forest {
             }
         }
 
+        let result = ComputeResult { size: container_size };
+        self.nodes[node].layout_cache =
+            Some(result::Cache { node_size, parent_size, perform_layout, result: result.clone() });
+        Ok(result)
+    }
+
+    #[allow(clippy::cognitive_complexity)]
+    fn compute_internal(
+        &mut self,
+        node: NodeId,
+        node_size: Size<Number>,
+        parent_size: Size<Number>,
+        perform_layout: bool,
+    ) -> Result<ComputeResult, Box<dyn Any>> {
+        self.nodes[node].is_dirty = false;
+
+        // First we check if we have a result for the given input
+        if let Some(ref cache) = self.nodes[node].layout_cache {
+            if cache.perform_layout || !perform_layout {
+                let width_compatible = if let Number::Defined(width) = node_size.width {
+                    (width - cache.result.size.width).abs() < f32::EPSILON
+                } else {
+                    cache.node_size.width.is_undefined()
+                };
+
+                let height_compatible = if let Number::Defined(height) = node_size.height {
+                    (height - cache.result.size.height).abs() < f32::EPSILON
+                } else {
+                    cache.node_size.height.is_undefined()
+                };
+
+                if width_compatible && height_compatible {
+                    return Ok(cache.result.clone());
+                }
+
+                if cache.node_size == node_size && cache.parent_size == parent_size {
+                    return Ok(cache.result.clone());
+                }
+            }
+        }
+
+        let margin = self.nodes[node].style.margin.map(|n| n.resolve(parent_size.width).or_else(0.0));
+        let padding = self.nodes[node].style.padding.map(|n| n.resolve(parent_size.width).or_else(0.0));
+        let border = self.nodes[node].style.border.map(|n| n.resolve(parent_size.width).or_else(0.0));
+
+        let padding_border = Rect {
+            start: padding.start + border.start,
+            end: padding.end + border.end,
+            top: padding.top + border.top,
+            bottom: padding.bottom + border.bottom,
+        };
+
+        let node_inner_size = Size {
+            width: node_size.width - padding_border.horizontal(),
+            height: node_size.height - padding_border.vertical(),
+        };
+
+        // If this is a leaf node we can skip a lot of this function in some cases
+        if self.children[node].is_empty() {
+            if node_size.width.is_defined() && node_size.height.is_defined() {
+                return Ok(ComputeResult { size: node_size.map(|s| s.or_else(0.0)) });
+            }
+
+            if let Some(ref measure) = self.nodes[node].measure {
+                let result = ComputeResult { size: measure(node_size)? };
+                self.nodes[node].layout_cache =
+                    Some(result::Cache { node_size, parent_size, perform_layout, result: result.clone() });
+                return Ok(result);
+            }
+
+            return Ok(ComputeResult {
+                size: Size {
+                    width: node_size.width.or_else(0.0) + padding_border.horizontal(),
+                    height: node_size.height.or_else(0.0) + padding_border.vertical(),
+                },
+            });
+        }
+
         fn hidden_layout(nodes: &mut Vec<NodeData>, children: &[Vec<NodeId>], node: NodeId, order: u32) {
             nodes[node].layout =
                 result::Layout { order, size: Size { width: 0.0, height: 0.0 }, location: Point { x: 0.0, y: 0.0 } };
@@ -1356,9 +1526,30 @@ impl Forest {
             }
         }
 
-        let result = ComputeResult { size: container_size };
-        self.nodes[node].layout_cache =
-            Some(result::Cache { node_size, parent_size, perform_layout, result: result.clone() });
-        Ok(result)
+        match self.nodes[node].style.display {
+            Display::Flex => self.computer_internal_flex(
+                node,
+                node_size,
+                parent_size,
+                perform_layout,
+                margin,
+                padding,
+                border,
+                padding_border,
+                node_inner_size,
+            ),
+            Display::None => Ok(ComputeResult { size: Size { width: 0.0, height: 0.0 } }),
+            Display::Grid => self.computer_internal_grid(
+                node,
+                node_size,
+                parent_size,
+                perform_layout,
+                margin,
+                padding,
+                border,
+                padding_border,
+                node_inner_size,
+            ),
+        }
     }
 }

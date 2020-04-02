@@ -250,6 +250,7 @@ fn generate_node(ident: &str, node: &json::JsonValue) -> TokenStream {
     let display = match style["display"] {
         json::JsonValue::Short(ref value) => match value.as_ref() {
             "none" => quote!(display: stretch::style::Display::None,),
+            "grid" => quote!(display: stretch::style::Display::Grid,),
             _ => quote!(),
         },
         _ => quote!(),
@@ -371,6 +372,47 @@ fn generate_node(ident: &str, node: &json::JsonValue) -> TokenStream {
         _ => quote!(),
     };
 
+    let grid_area = match style["gridArea"] {
+        json::JsonValue::Object(ref value) => {
+            let grid_area = generate_grid_area(value);
+            quote!(grid_area: #grid_area,)
+        }
+        _ => quote!(),
+    };
+
+    let grid_gaps = match style["gridGap"] {
+        json::JsonValue::Object(ref value) => {
+            let width = match value.get("width") {
+                Some(json::JsonValue::Object(ref width_obj)) => width_obj.get("value").unwrap().as_f32().unwrap_or(0.0),
+                _ => 0.0,
+            };
+            let height = match value.get("height") {
+                Some(json::JsonValue::Object(ref height_obj)) => {
+                    height_obj.get("value").unwrap().as_f32().unwrap_or(0.0)
+                }
+                _ => 0.0,
+            };
+            quote!(grid_gaps: stretch::geometry::Size {width: #width, height: #height},)
+        }
+        _ => quote!(),
+    };
+
+    let grid_columns = match style["gridColumns"] {
+        json::JsonValue::Array(ref value) => {
+            let def = generate_grid_tracks_definition(value);
+            quote!(grid_columns_template: #def)
+        }
+        _ => quote!(),
+    };
+
+    let grid_rows = match style["gridRows"] {
+        json::JsonValue::Array(ref value) => {
+            let def = generate_grid_tracks_definition(value);
+            quote!(grid_rows_template: #def)
+        }
+        _ => quote!(),
+    };
+
     let size = match style["size"] {
         json::JsonValue::Object(ref value) => {
             let size = generate_size(value);
@@ -452,6 +494,10 @@ fn generate_node(ident: &str, node: &json::JsonValue) -> TokenStream {
             #flex_grow
             #flex_shrink
             #flex_basis
+            #grid_area
+            #grid_gaps
+            #grid_columns
+            #grid_rows
             #size
             #min_size
             #max_size
@@ -502,6 +548,77 @@ fn generate_dimension(dimen: &json::object::Object) -> TokenStream {
             "percent" => {
                 let value = value();
                 quote!(stretch::style::Dimension::Percent(#value))
+            }
+            _ => unreachable!(),
+        },
+        _ => unreachable!(),
+    }
+}
+
+fn generate_grid_area(grid_area: &json::object::Object) -> TokenStream {
+    let kind = grid_area.get("kind").unwrap();
+
+    match kind {
+        json::JsonValue::Short(ref kind) => match kind.as_ref() {
+            "auto" => quote!(stretch::style::GridArea::Auto),
+            "explicit" => {
+                let value = grid_area.get("value").unwrap();
+                let row_start = value[0].as_f32().unwrap() as i32;
+                let row_end = value[1].as_f32().unwrap() as i32;
+                let column_start = value[2].as_f32().unwrap() as i32;
+                let column_end = value[3].as_f32().unwrap() as i32;
+                quote!(stretch::style::GridArea::Manual{row_start:#row_start, row_end:#row_end, column_start:#column_start, column_end:#column_end})
+            }
+            _ => unreachable!(),
+        },
+        _ => unreachable!(),
+    }
+}
+
+fn generate_grid_tracks_definition(track_def: &json::Array) -> TokenStream {
+    let track_sizes: Vec<TokenStream> = track_def
+        .iter()
+        .map(|val| match val {
+            json::JsonValue::Object(ref value) => generate_track_size(value),
+            _ => unreachable!(),
+        })
+        .collect();
+    let mut track_defs: Vec<TokenStream> = (0..track_sizes.len())
+        .step_by(2)
+        .map(|i| {
+            let min_val = &track_sizes[i];
+            let max_val = &track_sizes[i + 1];
+            quote!(stretch::style::TrackSizeDefinition {min: #min_val, max: #max_val})
+        })
+        .collect();
+    let fill = track_defs.pop();
+    quote!(stretch::style::GridTracksTemplate {fill:#fill, defined:Some(vec![#(#track_defs),*])},)
+}
+
+fn generate_track_size(grid_size_value: &json::object::Object) -> TokenStream {
+    let unit = grid_size_value.get("unit").unwrap();
+    let value = || grid_size_value.get("value").unwrap().as_f32().unwrap();
+
+    match unit {
+        json::JsonValue::Short(ref unit) => match unit.as_ref() {
+            "auto" => quote!(stretch::style::TrackSizeValues::Auto),
+            "min-content" => quote!(stretch::style::TrackSizeValues::MinContent),
+            "max-content" => quote!(stretch::style::TrackSizeValues::MaxContent),
+            "points" => {
+                let val = value();
+                quote!(stretch::style::TrackSizeValues::Points(#val))
+            }
+            "percent" => {
+                let val = value();
+                quote!(stretch::style::TrackSizeValues::Percent(#val))
+            }
+            "flex" => {
+                let val = value();
+                quote!(stretch::style::TrackSizeValues::Flex(#val))
+            }
+            "auto-capped" => {
+                let val = value();
+                quote!(stretch::style::TrackSizeValues::ClampedAuto(#val))
             }
             _ => unreachable!(),
         },

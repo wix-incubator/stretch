@@ -84,11 +84,84 @@ pub enum Display {
     Flex,
     #[cfg_attr(feature = "serde", serde(rename = "none"))]
     None,
+    #[cfg_attr(feature = "serde", serde(rename = "grid"))]
+    Grid,
 }
 
 impl Default for Display {
     fn default() -> Display {
         Display::Flex
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
+#[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
+pub enum TrackSizeValues {
+    Auto,
+    MinContent,
+    MaxContent,
+    Points(f32),
+    Percent(f32),
+    Flex(f32),
+    ClampedAuto(f32),
+}
+
+impl Default for TrackSizeValues {
+    fn default() -> TrackSizeValues {
+        TrackSizeValues::Auto
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
+#[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
+pub struct TrackSizeDefinition {
+    pub min: TrackSizeValues,
+    pub max: TrackSizeValues,
+}
+
+impl TrackSizeDefinition {
+    pub fn new(val: TrackSizeValues) -> Self {
+        TrackSizeDefinition { min: val, max: val }
+    }
+}
+
+impl Default for TrackSizeDefinition {
+    fn default() -> TrackSizeDefinition {
+        TrackSizeDefinition { min: Default::default(), max: Default::default() }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
+#[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
+pub struct GridTracksTemplate {
+    pub fill: TrackSizeDefinition,
+    pub defined: Option<Vec<TrackSizeDefinition>>,
+}
+
+impl Default for GridTracksTemplate {
+    fn default() -> GridTracksTemplate {
+        GridTracksTemplate { fill: Default::default(), defined: None }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
+#[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
+pub enum GridArea {
+    Auto,
+    Manual { row_start: i32, row_end: i32, column_start: i32, column_end: i32 },
+}
+
+impl Default for GridArea {
+    fn default() -> GridArea {
+        GridArea::Auto
     }
 }
 
@@ -236,7 +309,7 @@ impl Default for Size<Dimension> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(default))]
 #[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
@@ -259,6 +332,10 @@ pub struct Style {
     pub flex_grow: f32,
     pub flex_shrink: f32,
     pub flex_basis: Dimension,
+    pub grid_area: GridArea,
+    pub grid_gaps: Size<f32>,
+    pub grid_rows_template: GridTracksTemplate,
+    pub grid_columns_template: GridTracksTemplate,
     pub size: Size<Dimension>,
     pub min_size: Size<Dimension>,
     pub max_size: Size<Dimension>,
@@ -285,6 +362,10 @@ impl Default for Style {
             flex_grow: 0.0,
             flex_shrink: 1.0,
             flex_basis: Dimension::Auto,
+            grid_area: Default::default(),
+            grid_gaps: Size { width: 0.0, height: 0.0 },
+            grid_rows_template: Default::default(),
+            grid_columns_template: Default::default(),
             size: Default::default(),
             min_size: Default::default(),
             max_size: Default::default(),

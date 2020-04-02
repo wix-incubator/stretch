@@ -163,6 +163,7 @@ impl From<i32> for Direction {
 pub enum Display {
     Flex,
     None,
+    Grid,
 }
 
 impl Into<stretch::style::Display> for Display {
@@ -170,6 +171,7 @@ impl Into<stretch::style::Display> for Display {
         match self {
             Display::Flex => stretch::style::Display::Flex,
             Display::None => stretch::style::Display::None,
+            Display::Grid => stretch::style::Display::Grid,
         }
     }
 }
@@ -179,6 +181,7 @@ impl From<i32> for Display {
         match n {
             0 => Display::Flex,
             1 => Display::None,
+            2 => Display::Grid,
             _ => Display::Flex,
         }
     }

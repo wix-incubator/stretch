@@ -1,4 +1,5 @@
 use core::ops::Add;
+use core::ops::Sub;
 
 use crate::number::Number;
 use crate::style;
@@ -21,6 +22,18 @@ impl<T> Rect<T> {
         F: Fn(T) -> R,
     {
         Rect { start: f(self.start), end: f(self.end), top: f(self.top), bottom: f(self.bottom) }
+    }
+}
+
+impl<T> Rect<T>
+where
+    T: Sub<Output = T> + Copy + Clone,
+{
+    pub(crate) fn size(&self, direction: style::FlexDirection) -> T {
+        match direction {
+            style::FlexDirection::Row | style::FlexDirection::RowReverse => self.bottom - self.top,
+            style::FlexDirection::Column | style::FlexDirection::ColumnReverse => self.end - self.start,
+        }
     }
 }
 

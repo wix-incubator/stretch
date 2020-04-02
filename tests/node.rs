@@ -98,8 +98,8 @@ mod node {
     #[test]
     fn remove() {
         let mut stretch = Stretch::new();
-
-        let style2 = Style { flex_direction: FlexDirection::Column, ..Style::default() };
+        let flex_direction = FlexDirection::Column;
+        let style2 = Style { flex_direction, ..Style::default() };
 
         // Build a linear tree layout: <0> <- <1> <- <2>
         let node2 = stretch.new_node(style2, vec![]).unwrap();
@@ -115,7 +115,7 @@ mod node {
 
         assert!(stretch.children(node0).unwrap().is_empty());
         assert!(stretch.children(node2).unwrap().is_empty());
-        assert_eq!(stretch.style(node2).unwrap().flex_direction, style2.flex_direction);
+        assert_eq!(stretch.style(node2).unwrap().flex_direction, flex_direction);
     }
 
     #[test]

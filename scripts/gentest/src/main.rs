@@ -380,6 +380,54 @@ fn generate_node(ident: &str, node: &json::JsonValue) -> TokenStream {
         _ => quote!(),
     };
 
+    let grid_template_row_bounds = match style["gridTemplateRowBounds"] {
+        json::JsonValue::Array(ref value) => {
+            let track_bounds_list = generate_track_bounds_list(value);
+            quote!(grid_template_row_bounds: #track_bounds_list,)
+        }
+        _ => quote!(),
+    };
+
+    let grid_template_column_bounds = match style["gridTemplateColumnBounds"] {
+        json::JsonValue::Array(ref value) => {
+            let track_bounds_list = generate_track_bounds_list(value);
+            quote!(grid_template_column_bounds: #track_bounds_list,)
+        }
+        _ => quote!(),
+    };
+
+    let grid_row_start = match style["gridRowStart"] {
+        json::JsonValue::Object(ref value) => {
+            let grid_line = generate_grid_line(value);
+            quote!(grid_row_start: #grid_line,)
+        }
+        _ => quote!(),
+    };
+
+    let grid_row_end = match style["gridRowEnd"] {
+        json::JsonValue::Object(ref value) => {
+            let grid_line = generate_grid_line(value);
+            quote!(grid_row_end: #grid_line,)
+        }
+        _ => quote!(),
+    };
+
+    let grid_column_start = match style["gridColumnStart"] {
+        json::JsonValue::Object(ref value) => {
+            let grid_line = generate_grid_line(value);
+            quote!(grid_column_start: #grid_line,)
+        }
+        _ => quote!(),
+    };
+
+    let grid_column_end = match style["gridColumnEnd"] {
+        json::JsonValue::Object(ref value) => {
+            let grid_line = generate_grid_line(value);
+            quote!(grid_column_end: #grid_line,)
+        }
+        _ => quote!(),
+    };
+
     let grid_gaps = match style["gridGap"] {
         json::JsonValue::Object(ref value) => {
             let width = match value.get("width") {
@@ -495,6 +543,12 @@ fn generate_node(ident: &str, node: &json::JsonValue) -> TokenStream {
             #flex_shrink
             #flex_basis
             #grid_area
+            #grid_template_row_bounds
+            #grid_template_column_bounds
+            #grid_row_start
+            #grid_row_end
+            #grid_column_start
+            #grid_column_end
             #grid_gaps
             #grid_columns
             #grid_rows
@@ -570,6 +624,42 @@ fn generate_grid_area(grid_area: &json::object::Object) -> TokenStream {
                 quote!(stretch::style::GridArea::Manual{row_start:#row_start, row_end:#row_end, column_start:#column_start, column_end:#column_end})
             }
             _ => unreachable!(),
+        },
+        _ => unreachable!(),
+    }
+}
+
+fn generate_track_bounds_list(track_bounds_list: &json::Array) -> TokenStream {
+    let track_bounds_list: Vec<TokenStream> = track_bounds_list
+        .iter()
+        .map(|val| match val {
+            json::JsonValue::Array(ref arr) => arr,
+            _ => unreachable!(),
+        })
+        .map(|arr| {
+            let (min_val, max_val) = match (&arr[0], &arr[1]) {
+                (json::JsonValue::Object(ref v0), json::JsonValue::Object(ref v1)) => {
+                    (generate_track_size(v0), generate_track_size(v1))
+                }
+                _ => unreachable!(),
+            };
+            quote!(stretch::style::TrackSizeBounds {min: #min_val, max: #max_val})
+        })
+        .collect();
+
+    quote!(vec![#(#track_bounds_list),*])
+}
+
+fn generate_grid_line(grid_line: &json::object::Object) -> TokenStream {
+    let kind = grid_line.get("kind").unwrap();
+
+    match kind {
+        json::JsonValue::Short(ref kind) => match kind.as_ref() {
+            "nth" => {
+                let value = grid_line.get("value").unwrap().as_f32().unwrap() as i32;
+                quote!(stretch::style::GridLine::Nth(#value))
+            }
+            _ => unreachable!("Unsupported kind for grid-line: {}", kind),
         },
         _ => unreachable!(),
     }

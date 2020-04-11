@@ -23,6 +23,39 @@ function parseGridArea(input) {
   }
 }
 
+// https://www.w3.org/TR/css-grid-1/#line-placement
+// <grid-line> = 
+//   auto |
+//   <custom-ident> |
+//   [ <integer> && <custom-ident>? ] |
+//   [ span && [ <integer> || <custom-ident> ] ]
+function parseGridLine (input) {
+  if (!input) {
+    return undefined;
+  }
+  
+  const n = parseInt(input, 10)
+  return {kind: 'nth', value: isNaN(n) ? 1 : n}
+}
+
+function parseTrackList(input) {
+  // TODO support repeat: https://www.w3.org/TR/css-grid-1/#typedef-auto-track-list
+  // TODO support explicit line names
+  if (!input) {
+    return undefined;
+  }
+  const segments = input.split(' ').filter(v => v).reduce(({current, values}, str) => {
+    const next = current+str;
+    if (next.split('(').length === next.split(')').length) { // matched parens
+      return {current: '', values: [...values, next]}
+    } else {
+      return {current:next, values}
+    }
+  }, {current: '', values: []}).values;
+  
+  return segments.map(v => parseGridTemplatesValue(v));
+}
+
 function parseGridTemplatesValueHelper(input) {
   const [unit, ...rest] = input.split(/[(,)]/g).filter(v => v)
   const value = rest.map(v => parseGridTemplatesValueHelper(v))
@@ -175,6 +208,14 @@ function describeElement(e) {
       gridRows: parseGridTemplates(e.style.gridTemplateRows),
       gridColumns: parseGridTemplates(e.style.gridTemplateColumns),
       gridGap: parseSize({width: e.style.columnGap, height: e.style.rowGap}),
+      
+      gridTemplateRowBounds: parseTrackList(e.style.gridTemplateRows),
+      gridTemplateColumnBounds: parseTrackList(e.style.gridTemplateColumns),
+      gridRowStart: parseGridLine(e.style.gridRowStart),
+      gridRowEnd: parseGridLine(e.style.gridRowEnd),
+      gridColumnStart: parseGridLine(e.style.gridColumnStart),
+      gridColumnEnd: parseGridLine(e.style.gridColumnEnd),
+      
       size: parseSize({width: e.style.width, height: e.style.height}),
       min_size: parseSize({width: e.style.minWidth, height: e.style.minHeight}),
       max_size: parseSize({width: e.style.maxWidth, height: e.style.maxHeight}),

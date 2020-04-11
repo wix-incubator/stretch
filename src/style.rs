@@ -169,6 +169,23 @@ impl Default for GridArea {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
 #[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
+pub enum GridLine {
+    // Auto,
+    // NamedGridArea,
+    Nth(i32 /* TODO support identifier */),
+    // Span
+}
+
+impl Default for GridLine {
+    fn default() -> GridLine {
+        GridLine::Nth(1)
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
+#[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
 pub enum FlexDirection {
     Row,
     Column,
@@ -333,6 +350,12 @@ pub struct Style {
     pub flex_shrink: f32,
     pub flex_basis: Dimension,
     pub grid_area: GridArea,
+    pub grid_template_row_bounds: Vec<TrackSizeBounds>,
+    pub grid_template_column_bounds: Vec<TrackSizeBounds>,
+    pub grid_row_start: GridLine,
+    pub grid_row_end: GridLine,
+    pub grid_column_start: GridLine,
+    pub grid_column_end: GridLine,
     pub grid_gaps: Size<f32>,
     pub grid_rows_template: GridTracksTemplate,
     pub grid_columns_template: GridTracksTemplate,
@@ -363,6 +386,12 @@ impl Default for Style {
             flex_shrink: 1.0,
             flex_basis: Dimension::Auto,
             grid_area: Default::default(),
+            grid_template_row_bounds: vec![],
+            grid_template_column_bounds: vec![],
+            grid_row_start: Default::default(),
+            grid_row_end: Default::default(),
+            grid_column_start: Default::default(),
+            grid_column_end: Default::default(),
             grid_gaps: Size { width: 0.0, height: 0.0 },
             grid_rows_template: Default::default(),
             grid_columns_template: Default::default(),

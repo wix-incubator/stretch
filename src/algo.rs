@@ -19,32 +19,32 @@ pub struct ComputeResult {
     pub size: Size<f32>,
 }
 
+#[derive(Debug)]
 enum GrowthLimit {
     Finite(f32),
     Infinite,
 }
 
+#[derive(Debug)]
 struct TrackSize {
     base_size: f32,
     growth_limit: GrowthLimit,
 }
 
 impl TrackSize {
-    fn resolve_size(size: &TrackSizeValues, container_size: &Number) -> Option<f32> {
-        match size {
-            TrackSizeValues::Points(pts) => Some(*pts),
-            TrackSizeValues::Percent(percentage) => match container_size {
-                Number::Undefined => None,
-                Number::Defined(pts) => Some(pts * percentage),
-            },
-            _ => None,
-        }
-    }
     fn new(bounds: &TrackSizeBounds, container_size: &Number) -> Self {
-        let base_size = TrackSize::resolve_size(&bounds.min, container_size).unwrap_or(0.0);
-        let growth_limit = match TrackSize::resolve_size(&bounds.max, container_size) {
-            None => GrowthLimit::Infinite,
-            Some(value) => GrowthLimit::Finite(value),
+        let base_size = match (bounds.min, container_size) {
+            (TrackSizeValues::Points(pts), _) => pts,
+            (TrackSizeValues::Percent(percentage), Number::Defined(pts)) => pts * percentage,
+            _ => 0.,
+        };
+        let growth_limit = match (bounds.max, container_size) {
+            (TrackSizeValues::Flex(_), _) => GrowthLimit::Finite(base_size),
+            (TrackSizeValues::Points(pts), _) => GrowthLimit::Finite(base_size.max(pts)),
+            (TrackSizeValues::Percent(percentage), Number::Defined(pts)) => {
+                GrowthLimit::Finite(base_size.max(pts * percentage))
+            }
+            _ => GrowthLimit::Infinite,
         };
         Self { growth_limit, base_size }
     }
@@ -179,99 +179,122 @@ impl Forest {
         padding_border: Rect<f32>,
         node_inner_size: Size<Number>,
     ) -> Result<ComputeResult, Box<dyn Any>> {
-        // Grid Item Placing - for now minimal no support for auto placement
+        // Grid Item Placing (https://www.w3.org/TR/css-grid-1/#grid-item-placement-algorithm)
+        // * for now only support - positive index, explicit grid defined lines
+
+        let mut container_size = Size { width: 0.0, height: 0.0 };
+
+        let container_style = &self.nodes[node].style;
+        let _explicit_grid_row_lines = container_style.grid_template_row_bounds.len() + 1;
+        let _explicit_grid_columns_lines = container_style.grid_template_column_bounds.len() + 1;
+
         let visible_children: Vec<NodeId> = self.children[node]
             .iter()
             .filter(|child| self.nodes[**child].style.display != Display::None)
             .map(|child| child.clone())
             .collect();
 
-        fn max_track_index(start: i32, end: i32) -> i32 {
-            let start: i32 = start.abs();
-            let end: i32 = end.abs();
-            if end < start {
-                start
-            } else {
-                end
-            }
-        }
-
-        let max_row: i32 = visible_children
-            .iter()
-            .map(|child| match &self.nodes[*child].style.grid_area {
-                GridArea::Auto => 0,
-                GridArea::Manual { row_start, row_end, .. } => max_track_index(*row_start, *row_end),
-            })
-            .max()
-            .unwrap_or(0);
-
-        let max_column: i32 = visible_children
-            .iter()
-            .map(|child| match &self.nodes[*child].style.grid_area {
-                GridArea::Auto => 0,
-                GridArea::Manual { column_start, column_end, .. } => max_track_index(*column_start, *column_end),
-            })
-            .max()
-            .unwrap_or(0);
-
-        let mut grid_areas: Vec<(&usize, Rect<i32>)> = visible_children
+        let grid_placements: Vec<(&usize, Rect<i32>)> = visible_children
             .iter()
             .map(|child| (child, &self.nodes[*child].style))
             .map(|(child, style)| {
-                (
-                    child,
-                    match style.grid_area {
-                        GridArea::Auto => Rect { start: 0, end: 0, top: 0, bottom: 0 },
-                        GridArea::Manual { row_start, row_end, column_start, column_end } => Rect {
-                            start: if column_start < 0 { max_column + column_start } else { column_start },
-                            end: if column_end < 0 { max_column + column_end } else { column_end },
-                            top: if row_start < 0 { max_row + row_start } else { row_start },
-                            bottom: if row_end < 0 { max_row + row_end } else { row_end },
-                        },
-                    },
-                )
+                let mut row_start = match style.grid_row_start {
+                    GridLine::Nth(n) => n,
+                };
+                let mut row_end = match style.grid_row_end {
+                    GridLine::Nth(n) => n,
+                };
+
+                if row_start == row_end {
+                    row_end += 1
+                } else if row_start > row_end {
+                    let temp = row_start;
+                    row_start = row_end;
+                    row_end = temp;
+                }
+
+                let mut column_start = match style.grid_column_start {
+                    GridLine::Nth(n) => n,
+                };
+                let mut column_end = match style.grid_column_end {
+                    GridLine::Nth(n) => n,
+                };
+                if column_start == column_end {
+                    column_end += 1
+                } else if column_start > column_end {
+                    let temp = column_start;
+                    column_start = column_end;
+                    column_end = temp;
+                }
+
+                return (child, Rect { start: column_start, end: column_end, top: row_start, bottom: row_end });
             })
             .collect();
 
-        let mut track_sizing = |direction, cross_sizes: Vec<f32>, gap| -> Vec<f32> {
-            let container_style = &self.nodes[node].style;
-            let track_size_bounds: Vec<TrackSizeBounds> = match direction {
-                FlexDirection::Column => (1..=max_row)
-                    .map(|index| match &container_style.grid_rows_template.defined {
-                        None => container_style.grid_rows_template.fill,
-                        Some(defs) => *defs.get(index as usize).unwrap_or(&container_style.grid_rows_template.fill),
-                    })
-                    .collect(),
-                FlexDirection::Row => (1..=max_column)
-                    .map(|index| match &container_style.grid_columns_template.defined {
-                        None => container_style.grid_columns_template.fill,
-                        Some(defs) => *defs.get(index as usize).unwrap_or(&container_style.grid_columns_template.fill),
-                    })
-                    .collect(),
-                _ => unreachable!(),
+        let column_sizes: Vec<TrackSize> = container_style
+            .grid_template_column_bounds
+            .iter()
+            .map(|bounds| TrackSize::new(bounds, &node_size.main(FlexDirection::Row)))
+            .collect();
+
+        let row_sizes: Vec<TrackSize> = container_style
+            .grid_template_row_bounds
+            .iter()
+            .map(|bounds| TrackSize::new(bounds, &node_size.main(FlexDirection::Column)))
+            .collect();
+
+        for (child, grid_placements) in grid_placements.iter() {
+            let child_horizontal_offset = column_sizes
+                .iter()
+                .enumerate()
+                .filter(|&(i, _)| i + 1 < grid_placements.start as usize)
+                .fold(0., |offset, (_, track_size)| offset + track_size.base_size);
+
+            let child_width = column_sizes
+                .iter()
+                .enumerate()
+                .filter(|&(i, _)| i + 1 >= grid_placements.start as usize && i + 1 < grid_placements.end as usize)
+                .fold(Number::Defined(0.), |width, (_, track_size)| width + track_size.base_size);
+
+            let child_vertical_offset = row_sizes
+                .iter()
+                .enumerate()
+                .filter(|&(i, _)| i + 1 < grid_placements.top as usize)
+                .fold(0., |offset, (_, track_size)| offset + track_size.base_size);
+
+            let child_height = row_sizes
+                .iter()
+                .enumerate()
+                .filter(|&(i, _)| i + 1 >= grid_placements.top as usize && i + 1 < grid_placements.bottom as usize)
+                .fold(Number::Defined(0.), |height, (_, track_size)| height + track_size.base_size);
+
+            let child_result = self.compute_internal(
+                **child,
+                Size { width: child_width, height: child_height },
+                node_size,
+                perform_layout,
+            )?;
+
+            self.nodes[**child].layout = result::Layout {
+                order: 0,
+                size: child_result.size,
+                location: Point { x: child_horizontal_offset, y: child_vertical_offset },
             };
+        }
 
-            // Initialize Track Sizes
-            let tracks: Vec<TrackSize> =
-                track_size_bounds.iter().map(|def| TrackSize::new(def, &node_size.main(direction))).collect();
-            // Resolve Intrinsic Track Sizes
-            grid_areas.sort_by(|(_, grid_a), (_, grid_b)| {
-                grid_a.size(direction).partial_cmp(&grid_b.size(direction)).unwrap()
-            });
-            for (child, grid_area) in grid_areas.iter() {
-                match grid_area.size(direction) {
-                    1 => { // Size tracks to fit non-spanning items
-                    }
-                    _ => {}
-                }
-            }
-            vec![]
-        };
+        column_sizes.iter().for_each(|col_size| {
+            container_size.width += col_size.base_size;
+        });
 
-        track_sizing(FlexDirection::Column, vec![], 0.0);
-        // Skipped for now - only concrete grid area supported
+        row_sizes.iter().for_each(|row_size| {
+            container_size.height += row_size.base_size;
+        });
 
-        Ok(ComputeResult { size: Size { width: 0.0, height: 0.0 } })
+        let result = ComputeResult { size: container_size };
+        // println!("result: {:?}", result);
+        self.nodes[node].layout_cache =
+            Some(result::Cache { node_size, parent_size, perform_layout, result: result.clone() });
+        Ok(result)
     }
 
     fn resolve_child_size(&self, child: NodeId, direction: FlexDirection, container_size: Size<f32>) -> ResolvedChild {

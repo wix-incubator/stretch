@@ -52,6 +52,7 @@ mod child_min_max_width_flexing;
 mod container_with_unsized_child;
 mod display_grid;
 mod display_grid_column_templates;
+mod display_grid_explicit_fixed;
 mod display_grid_gaps;
 mod display_grid_negative_grid_area;
 mod display_none;
@@ -297,6 +298,7 @@ fn benchmark(c: &mut Criterion) {
             container_with_unsized_child::compute();
             display_grid::compute();
             display_grid_column_templates::compute();
+            display_grid_explicit_fixed::compute();
             display_grid_gaps::compute();
             display_grid_negative_grid_area::compute();
             display_none::compute();

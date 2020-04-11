@@ -9,6 +9,10 @@ pub fn compute() {
                     column_start: 1i32,
                     column_end: 1i32,
                 },
+                grid_row_start: stretch::style::GridLine::Nth(1i32),
+                grid_row_end: stretch::style::GridLine::Nth(1i32),
+                grid_column_start: stretch::style::GridLine::Nth(1i32),
+                grid_column_end: stretch::style::GridLine::Nth(1i32),
                 ..Default::default()
             },
             vec![],
@@ -23,6 +27,10 @@ pub fn compute() {
                     column_start: 1i32,
                     column_end: 2i32,
                 },
+                grid_row_start: stretch::style::GridLine::Nth(1i32),
+                grid_row_end: stretch::style::GridLine::Nth(1i32),
+                grid_column_start: stretch::style::GridLine::Nth(2i32),
+                grid_column_end: stretch::style::GridLine::Nth(2i32),
                 ..Default::default()
             },
             vec![],
@@ -37,6 +45,10 @@ pub fn compute() {
                     column_start: 1i32,
                     column_end: 3i32,
                 },
+                grid_row_start: stretch::style::GridLine::Nth(1i32),
+                grid_row_end: stretch::style::GridLine::Nth(1i32),
+                grid_column_start: stretch::style::GridLine::Nth(3i32),
+                grid_column_end: stretch::style::GridLine::Nth(3i32),
                 ..Default::default()
             },
             vec![],
@@ -51,6 +63,10 @@ pub fn compute() {
                     column_start: 1i32,
                     column_end: 4i32,
                 },
+                grid_row_start: stretch::style::GridLine::Nth(1i32),
+                grid_row_end: stretch::style::GridLine::Nth(1i32),
+                grid_column_start: stretch::style::GridLine::Nth(4i32),
+                grid_column_end: stretch::style::GridLine::Nth(4i32),
                 ..Default::default()
             },
             vec![],
@@ -65,6 +81,10 @@ pub fn compute() {
                     column_start: 1i32,
                     column_end: 5i32,
                 },
+                grid_row_start: stretch::style::GridLine::Nth(1i32),
+                grid_row_end: stretch::style::GridLine::Nth(1i32),
+                grid_column_start: stretch::style::GridLine::Nth(5i32),
+                grid_column_end: stretch::style::GridLine::Nth(5i32),
                 ..Default::default()
             },
             vec![],
@@ -74,6 +94,24 @@ pub fn compute() {
         .new_node(
             stretch::style::Style {
                 display: stretch::style::Display::Grid,
+                grid_template_column_bounds: vec![
+                    stretch::style::TrackSizeBounds {
+                        min: stretch::style::TrackSizeValues::MinContent,
+                        max: stretch::style::TrackSizeValues::MinContent,
+                    },
+                    stretch::style::TrackSizeBounds {
+                        min: stretch::style::TrackSizeValues::MaxContent,
+                        max: stretch::style::TrackSizeValues::MaxContent,
+                    },
+                    stretch::style::TrackSizeBounds {
+                        min: stretch::style::TrackSizeValues::Points(30f32),
+                        max: stretch::style::TrackSizeValues::Percent(0.5f32),
+                    },
+                    stretch::style::TrackSizeBounds {
+                        min: stretch::style::TrackSizeValues::Flex(1f32),
+                        max: stretch::style::TrackSizeValues::Flex(1f32),
+                    },
+                ],
                 grid_columns_template: stretch::style::GridTracksTemplate {
                     fill: stretch::style::TrackSizeBounds {
                         min: stretch::style::TrackSizeValues::Auto,

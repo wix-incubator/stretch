@@ -51,6 +51,7 @@ mod child_min_max_width_flexing;
 mod container_with_unsized_child;
 mod display_grid;
 mod display_grid_column_templates;
+mod display_grid_explicit_fixed;
 mod display_grid_gaps;
 mod display_grid_negative_grid_area;
 mod display_none;

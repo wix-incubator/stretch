@@ -10,6 +10,10 @@ fn display_grid() {
                     column_start: 1i32,
                     column_end: 1i32,
                 },
+                grid_row_start: stretch::style::GridLine::Nth(1i32),
+                grid_row_end: stretch::style::GridLine::Nth(1i32),
+                grid_column_start: stretch::style::GridLine::Nth(1i32),
+                grid_column_end: stretch::style::GridLine::Nth(1i32),
                 ..Default::default()
             },
             vec![],
@@ -24,6 +28,10 @@ fn display_grid() {
                     column_start: 1i32,
                     column_end: 2i32,
                 },
+                grid_row_start: stretch::style::GridLine::Nth(1i32),
+                grid_row_end: stretch::style::GridLine::Nth(1i32),
+                grid_column_start: stretch::style::GridLine::Nth(2i32),
+                grid_column_end: stretch::style::GridLine::Nth(2i32),
                 ..Default::default()
             },
             vec![],

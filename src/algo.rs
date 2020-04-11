@@ -187,7 +187,6 @@ impl Forest {
         // Grid Item Placing (https://www.w3.org/TR/css-grid-1/#grid-item-placement-algorithm)
         // * for now only support - positive index, explicit grid defined lines
 
-        let mut container_size = Size { width: 0.0, height: 0.0 };
 
         let container_style = &self.nodes[node].style;
         let max_row_lines = container_style.grid_template_row_bounds.len() as i32 + 1;
@@ -281,6 +280,8 @@ impl Forest {
                 location: Point { x: child_horizontal_offset, y: child_vertical_offset },
             };
         }
+
+        let mut container_size = Size { width: 0.0, height: 0.0 };
 
         column_sizes.iter().for_each(|col_size| {
             container_size.width += col_size.base_size;

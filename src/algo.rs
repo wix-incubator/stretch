@@ -40,9 +40,9 @@ impl TrackSize {
             _ => None,
         }
     }
-    fn new(definition: &TrackSizeDefinition, container_size: &Number) -> Self {
-        let base_size = TrackSize::resolve_size(&definition.min, container_size).unwrap_or(0.0);
-        let growth_limit = match TrackSize::resolve_size(&definition.max, container_size) {
+    fn new(bounds: &TrackSizeBounds, container_size: &Number) -> Self {
+        let base_size = TrackSize::resolve_size(&bounds.min, container_size).unwrap_or(0.0);
+        let growth_limit = match TrackSize::resolve_size(&bounds.max, container_size) {
             None => GrowthLimit::Infinite,
             Some(value) => GrowthLimit::Finite(value),
         };
@@ -235,7 +235,7 @@ impl Forest {
 
         let mut track_sizing = |direction, cross_sizes: Vec<f32>, gap| -> Vec<f32> {
             let container_style = &self.nodes[node].style;
-            let track_defs: Vec<TrackSizeDefinition> = match direction {
+            let track_size_bounds: Vec<TrackSizeBounds> = match direction {
                 FlexDirection::Column => (1..=max_row)
                     .map(|index| match &container_style.grid_rows_template.defined {
                         None => container_style.grid_rows_template.fill,
@@ -253,7 +253,7 @@ impl Forest {
 
             // Initialize Track Sizes
             let tracks: Vec<TrackSize> =
-                track_defs.iter().map(|def| TrackSize::new(def, &node_size.main(direction))).collect();
+                track_size_bounds.iter().map(|def| TrackSize::new(def, &node_size.main(direction))).collect();
             // Resolve Intrinsic Track Sizes
             grid_areas.sort_by(|(_, grid_a), (_, grid_b)| {
                 grid_a.size(direction).partial_cmp(&grid_b.size(direction)).unwrap()

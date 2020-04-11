@@ -76,24 +76,24 @@ fn display_grid_column_templates() {
             stretch::style::Style {
                 display: stretch::style::Display::Grid,
                 grid_columns_template: stretch::style::GridTracksTemplate {
-                    fill: stretch::style::TrackSizeDefinition {
+                    fill: stretch::style::TrackSizeBounds {
                         min: stretch::style::TrackSizeValues::Auto,
                         max: stretch::style::TrackSizeValues::Auto,
                     },
                     defined: Some(vec![
-                        stretch::style::TrackSizeDefinition {
+                        stretch::style::TrackSizeBounds {
                             min: stretch::style::TrackSizeValues::MinContent,
                             max: stretch::style::TrackSizeValues::MinContent,
                         },
-                        stretch::style::TrackSizeDefinition {
+                        stretch::style::TrackSizeBounds {
                             min: stretch::style::TrackSizeValues::MaxContent,
                             max: stretch::style::TrackSizeValues::MaxContent,
                         },
-                        stretch::style::TrackSizeDefinition {
+                        stretch::style::TrackSizeBounds {
                             min: stretch::style::TrackSizeValues::Points(30f32),
                             max: stretch::style::TrackSizeValues::Percent(0.5f32),
                         },
-                        stretch::style::TrackSizeDefinition {
+                        stretch::style::TrackSizeBounds {
                             min: stretch::style::TrackSizeValues::Flex(1f32),
                             max: stretch::style::TrackSizeValues::Flex(1f32),
                         },

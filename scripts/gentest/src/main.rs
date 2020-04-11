@@ -588,7 +588,7 @@ fn generate_grid_tracks_definition(track_def: &json::Array) -> TokenStream {
         .map(|i| {
             let min_val = &track_sizes[i];
             let max_val = &track_sizes[i + 1];
-            quote!(stretch::style::TrackSizeDefinition {min: #min_val, max: #max_val})
+            quote!(stretch::style::TrackSizeBounds {min: #min_val, max: #max_val})
         })
         .collect();
     let fill = track_defs.pop();

@@ -118,20 +118,20 @@ impl Default for TrackSizeValues {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
 #[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
-pub struct TrackSizeDefinition {
+pub struct TrackSizeBounds {
     pub min: TrackSizeValues,
     pub max: TrackSizeValues,
 }
 
-impl TrackSizeDefinition {
+impl TrackSizeBounds {
     pub fn new(val: TrackSizeValues) -> Self {
-        TrackSizeDefinition { min: val, max: val }
+        TrackSizeBounds { min: val, max: val }
     }
 }
 
-impl Default for TrackSizeDefinition {
-    fn default() -> TrackSizeDefinition {
-        TrackSizeDefinition { min: Default::default(), max: Default::default() }
+impl Default for TrackSizeBounds {
+    fn default() -> TrackSizeBounds {
+        TrackSizeBounds { min: Default::default(), max: Default::default() }
     }
 }
 
@@ -140,8 +140,8 @@ impl Default for TrackSizeDefinition {
 #[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
 #[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
 pub struct GridTracksTemplate {
-    pub fill: TrackSizeDefinition,
-    pub defined: Option<Vec<TrackSizeDefinition>>,
+    pub fill: TrackSizeBounds,
+    pub defined: Option<Vec<TrackSizeBounds>>,
 }
 
 impl Default for GridTracksTemplate {

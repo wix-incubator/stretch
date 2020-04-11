@@ -50,6 +50,11 @@ impl TrackSize {
     }
 }
 
+struct GridAxisPlacement {
+    position: i32,
+    span: i32,
+}
+
 struct FlexItem {
     node: NodeId,
 
@@ -185,8 +190,8 @@ impl Forest {
         let mut container_size = Size { width: 0.0, height: 0.0 };
 
         let container_style = &self.nodes[node].style;
-        let _explicit_grid_row_lines = container_style.grid_template_row_bounds.len() + 1;
-        let _explicit_grid_columns_lines = container_style.grid_template_column_bounds.len() + 1;
+        let max_row_lines = container_style.grid_template_row_bounds.len() as i32 + 1;
+        let max_column_lines = container_style.grid_template_column_bounds.len() as i32 + 1;
 
         let visible_children: Vec<NodeId> = self.children[node]
             .iter()
@@ -194,40 +199,35 @@ impl Forest {
             .map(|child| child.clone())
             .collect();
 
+        fn resolve_axis_placement(start: GridLine, end: GridLine, max: i32) -> GridAxisPlacement {
+            match (start, end) {
+                (GridLine::Nth(start), GridLine::Nth(end)) => {
+                    let start = if start < 0 { 1.max(start + max) } else { start };
+                    let end = if end < 0 { 1.max(end + max) } else { end };
+
+                    let position = start.min(end);
+                    let span = start.max(end) - position;
+                    GridAxisPlacement { position, span: span.max(1) }
+                }
+            }
+        }
+
         let grid_placements: Vec<(&usize, Rect<i32>)> = visible_children
             .iter()
             .map(|child| (child, &self.nodes[*child].style))
             .map(|(child, style)| {
-                let mut row_start = match style.grid_row_start {
-                    GridLine::Nth(n) => n,
-                };
-                let mut row_end = match style.grid_row_end {
-                    GridLine::Nth(n) => n,
-                };
+                let row = resolve_axis_placement(style.grid_row_start, style.grid_row_end, max_row_lines);
+                let col = resolve_axis_placement(style.grid_column_start, style.grid_column_end, max_column_lines);
 
-                if row_start == row_end {
-                    row_end += 1
-                } else if row_start > row_end {
-                    let temp = row_start;
-                    row_start = row_end;
-                    row_end = temp;
-                }
-
-                let mut column_start = match style.grid_column_start {
-                    GridLine::Nth(n) => n,
-                };
-                let mut column_end = match style.grid_column_end {
-                    GridLine::Nth(n) => n,
-                };
-                if column_start == column_end {
-                    column_end += 1
-                } else if column_start > column_end {
-                    let temp = column_start;
-                    column_start = column_end;
-                    column_end = temp;
-                }
-
-                return (child, Rect { start: column_start, end: column_end, top: row_start, bottom: row_end });
+                return (
+                    child,
+                    Rect {
+                        start: col.position,
+                        end: col.position + col.span,
+                        top: row.position,
+                        bottom: row.position + row.span,
+                    },
+                );
             })
             .collect();
 

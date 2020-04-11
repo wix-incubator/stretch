@@ -29,6 +29,7 @@ enum GrowthLimit {
 struct TrackSize {
     base_size: f32,
     growth_limit: GrowthLimit,
+    bounds: TrackSizeBounds,
 }
 
 impl TrackSize {
@@ -46,7 +47,7 @@ impl TrackSize {
             }
             _ => GrowthLimit::Infinite,
         };
-        Self { growth_limit, base_size }
+        Self { growth_limit, base_size, bounds: *bounds }
     }
 }
 
@@ -187,6 +188,10 @@ impl Forest {
         // Grid Item Placing (https://www.w3.org/TR/css-grid-1/#grid-item-placement-algorithm)
         // * for now only support - positive index, explicit grid defined lines
 
+        let available_space = Size {
+            width: node_size.width.or_else(parent_size.width - margin.horizontal()) - padding_border.horizontal(),
+            height: node_size.height.or_else(parent_size.height - margin.vertical()) - padding_border.vertical(),
+        };
 
         let container_style = &self.nodes[node].style;
         let max_row_lines = container_style.grid_template_row_bounds.len() as i32 + 1;
@@ -230,17 +235,71 @@ impl Forest {
             })
             .collect();
 
-        let column_sizes: Vec<TrackSize> = container_style
+        let implicit_column_lines =
+            grid_placements.iter().map(|(_, placement)| placement.end - max_column_lines).max().unwrap_or(0);
+
+        let implicit_column_sizes = (1..=implicit_column_lines).map(|_| {
+            TrackSize::new(
+                &TrackSizeBounds::new(TrackSizeValues::Auto), // TODO should be container_style.grid_auto_columns
+                &node_size.main(FlexDirection::Row),
+            )
+        });
+
+        let explicit_column_sizes = container_style
             .grid_template_column_bounds
             .iter()
-            .map(|bounds| TrackSize::new(bounds, &node_size.main(FlexDirection::Row)))
-            .collect();
+            .map(|bounds| TrackSize::new(bounds, &node_size.main(FlexDirection::Row)));
 
-        let row_sizes: Vec<TrackSize> = container_style
+        let mut column_sizes: Vec<TrackSize> = explicit_column_sizes.chain(implicit_column_sizes).collect();
+
+        let implicit_row_lines =
+            grid_placements.iter().map(|(_, placement)| placement.bottom - max_row_lines).max().unwrap_or(0);
+
+        let implicit_row_sizes = (1..=implicit_row_lines).map(|_| {
+            TrackSize::new(
+                &TrackSizeBounds::new(TrackSizeValues::Auto), // TODO should be container_style.grid_auto_rows
+                &node_size.main(FlexDirection::Column),
+            )
+        });
+
+        let explicit_row_sizes = container_style
             .grid_template_row_bounds
             .iter()
-            .map(|bounds| TrackSize::new(bounds, &node_size.main(FlexDirection::Column)))
-            .collect();
+            .map(|bounds| TrackSize::new(bounds, &node_size.main(FlexDirection::Column)));
+
+        let mut row_sizes: Vec<TrackSize> = explicit_row_sizes.chain(implicit_row_sizes).collect();
+
+        // § 11.8. Stretch 'auto' Tracks (https://www.w3.org/TR/css-grid-1/#algo-stretch)
+        let used_space: Size<f32> = Size {
+            width: column_sizes.iter().map(|track_size| track_size.base_size).sum(),
+            height: row_sizes.iter().map(|track_size| track_size.base_size).sum(),
+        };
+
+        let free_space = Size {
+            width: available_space.width - used_space.width,
+            height: available_space.height - used_space.height,
+        };
+
+        {
+            let auto_column_count =
+                column_sizes.iter().filter(|track_size| track_size.bounds.max == TrackSizeValues::Auto).count() as f32;
+            let auto_columns =
+                column_sizes.iter_mut().filter(|track_size| track_size.bounds.max == TrackSizeValues::Auto);
+            let free_space_per_column = free_space.width.or_else(0.) / auto_column_count;
+            for mut col_size in auto_columns {
+                col_size.base_size = free_space_per_column;
+            }
+        }
+
+        {
+            let auto_row_count =
+                row_sizes.iter().filter(|track_size| track_size.bounds.max == TrackSizeValues::Auto).count() as f32;
+            let auto_rows = row_sizes.iter_mut().filter(|track_size| track_size.bounds.max == TrackSizeValues::Auto);
+            let free_space_per_row = free_space.height.or_else(0.) / auto_row_count;
+            for mut row_size in auto_rows {
+                row_size.base_size = free_space_per_row;
+            }
+        }
 
         for (child, grid_placements) in grid_placements.iter() {
             let child_horizontal_offset = column_sizes

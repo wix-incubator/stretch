@@ -1516,7 +1516,7 @@ impl Forest {
                 result::Layout { order, size: Size { width: 0.0, height: 0.0 }, location: Point { x: 0.0, y: 0.0 } };
 
             for (order, child) in children[node].iter().enumerate() {
-                hidden_layout(nodes, children, *child, order as _);
+                hidden_layout(nodes, children, *child, order as _); // TODO are these redundant passes?
             }
         }
 

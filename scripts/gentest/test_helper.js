@@ -12,40 +12,39 @@ define_element_prop("__stretch_description__", (e) => {
   return JSON.stringify(describeElement(e));
 });
 
-function parseGridArea(input) {
-  if (!input) {
-    return undefined;
-  }
-  if (input === 'auto') {
-    return {kind: 'auto'}
-  } else {
-    return {kind: 'explicit', value: input.split('/').map(t => parseInt(t, 10))};
-  }
-}
-
-// https://www.w3.org/TR/css-grid-1/#line-placement
-// <grid-line> = 
-//   auto |
-//   <custom-ident> |
-//   [ <integer> && <custom-ident>? ] |
-//   [ span && [ <integer> || <custom-ident> ] ]
 function parseGridLine (input) {
   if (!input) {
     return undefined;
   }
   
-  const n = parseInt(input, 10)
-  return {kind: 'nth', value: isNaN(n) ? 1 : n}
+  if (input.includes("span")) {
+    const val = input.replace("span", "").trim();
+    if (isNaN(val)) {
+      return undefined;
+    } else {
+      return {
+        unit: "span",
+        value: parseInt(val, 10)
+      }
+    }
+  } else if (input === "auto") {
+    return {unit: "auto"};
+  } else if (!isNaN(input)) {
+    return {
+      unit: "position",
+      value: parseInt(input, 10)
+    }
+  } else {
+    return undefined;
+  }
 }
 
 function parseTrackList(input) {
-  // TODO support repeat: https://www.w3.org/TR/css-grid-1/#typedef-auto-track-list
-  // TODO support explicit line names
   if (!input) {
     return undefined;
   }
   const segments = input.split(' ').filter(v => v).reduce(({current, values}, str) => {
-    const next = current+str;
+    const next = current + str;
     if (next.split('(').length === next.split(')').length) { // matched parens
       return {current: '', values: [...values, next]}
     } else {
@@ -64,10 +63,10 @@ function parseGridTemplatesValueHelper(input) {
     case 'min-content':
     case 'max-content':
       return {unit};
-    case 'minmax':
-      return {unit, value};
-    case 'fit-content':
-      return {unit: 'minmax', value:[{unit:'auto'},{...values[0],unit: 'auto-capped'}]};
+    // case 'minmax':
+    //   return {unit, value};
+    // case 'fit-content':
+    //   return {unit: 'minmax', value:[{unit:'auto'},{...values[0],unit: 'auto-capped'}]};
     default:
       if (unit.endsWith("px")) {
         return {
@@ -84,38 +83,14 @@ function parseGridTemplatesValueHelper(input) {
           unit: 'flex', 
           value: Number(unit.replace('fr','')) 
         };
+      } else {
+        throw new Error("unsupported GridTemplateValue: " + unit)
       }
   }
 }
 
 function parseGridTemplatesValue(input) {
-  parsed = parseGridTemplatesValueHelper(input);
-  if (parsed.unit === 'minmax') {
-    return parsed.value;
-  } else {
-    return [parsed, parsed];
-  }
-}
-
-function parseGridTemplates(input) {
-  if (!input) {
-    return undefined;
-  }
-  const segments = input.split(' ').filter(v => v).reduce(({current, values}, str) => {
-    const next = current+str;
-    if (next.split('(').length === next.split(')').length) { // matched parens
-      return {current: '', values: [...values, next]}
-    } else {
-      return {current:next, values}
-    }
-  }, {current: '', values: []}).values;
-  let fill = 'auto';
-  if (segments[segments.length -1] === 'auto-repeat') {
-    fill = segments[segments.length - 2]
-    segments.pop();
-    segments.pop();
-  }
-  return segments.map(v => parseGridTemplatesValue(v)).flat().concat(parseGridTemplatesValue(fill));
+  return parseGridTemplatesValueHelper(input);
 }
 
 function parseDimension(input) {
@@ -204,18 +179,14 @@ function describeElement(e) {
       flexShrink: parseNumber(e.style.flexShrink),
       flexBasis: parseDimension(e.style.flexBasis),
 
-      gridArea: parseGridArea(e.style.gridArea),
-      gridRows: parseGridTemplates(e.style.gridTemplateRows),
-      gridColumns: parseGridTemplates(e.style.gridTemplateColumns),
-      gridGap: parseSize({width: e.style.columnGap, height: e.style.rowGap}),
-      
-      gridTemplateRowBounds: parseTrackList(e.style.gridTemplateRows),
-      gridTemplateColumnBounds: parseTrackList(e.style.gridTemplateColumns),
+      gridTemplateRows: parseTrackList(e.style.gridTemplateRows),
+      gridTemplateColumns: parseTrackList(e.style.gridTemplateColumns),
       gridRowStart: parseGridLine(e.style.gridRowStart),
       gridRowEnd: parseGridLine(e.style.gridRowEnd),
       gridColumnStart: parseGridLine(e.style.gridColumnStart),
       gridColumnEnd: parseGridLine(e.style.gridColumnEnd),
-      
+      gridGap: parseSize({width: e.style.columnGap, height: e.style.rowGap}),
+
       size: parseSize({width: e.style.width, height: e.style.height}),
       min_size: parseSize({width: e.style.minWidth, height: e.style.minHeight}),
       max_size: parseSize({width: e.style.maxWidth, height: e.style.maxHeight}),

@@ -372,60 +372,42 @@ fn generate_node(ident: &str, node: &json::JsonValue) -> TokenStream {
         _ => quote!(),
     };
 
-    let grid_area = match style["gridArea"] {
-        json::JsonValue::Object(ref value) => {
-            let grid_area = generate_grid_area(value);
-            quote!(grid_area: #grid_area,)
-        }
-        _ => quote!(),
+    let grid_template = {
+        let grid_template_rows = match style["gridTemplateRows"] {
+            json::JsonValue::Array(ref value) => generate_track_list(value),
+            _ => quote!(vec![]),
+        };
+
+        let grid_template_columns = match style["gridTemplateColumns"] {
+            json::JsonValue::Array(ref value) => generate_track_list(value),
+            _ => quote!(vec![]),
+        };
+
+        quote!(grid_template: stretch::style::Style::GridTemplate { rows: #grid_template_rows, columns: #grid_template_columns },)
     };
 
-    let grid_template_row_bounds = match style["gridTemplateRowBounds"] {
-        json::JsonValue::Array(ref value) => {
-            let track_bounds_list = generate_track_bounds_list(value);
-            quote!(grid_template_row_bounds: #track_bounds_list,)
-        }
-        _ => quote!(),
-    };
+    let grid_item = {
+        let row_placement = match (&style["gridRowStart"], &style["gridRowEnd"]) {
+            (json::JsonValue::Object(ref start), json::JsonValue::Object(ref end)) => {
+                generate_placement_from_two_properties(start, end)
+            }
+            (json::JsonValue::Object(ref prop), _) | (_, json::JsonValue::Object(ref prop)) => {
+                generate_placement_from_single_property(prop)
+            }
+            _ => quote!(Default::default()),
+        };
 
-    let grid_template_column_bounds = match style["gridTemplateColumnBounds"] {
-        json::JsonValue::Array(ref value) => {
-            let track_bounds_list = generate_track_bounds_list(value);
-            quote!(grid_template_column_bounds: #track_bounds_list,)
-        }
-        _ => quote!(),
-    };
+        let column_placement = match (&style["gridColumnStart"], &style["gridColumnEnd"]) {
+            (json::JsonValue::Object(ref start), json::JsonValue::Object(ref end)) => {
+                generate_placement_from_two_properties(start, end)
+            }
+            (json::JsonValue::Object(ref prop), _) | (_, json::JsonValue::Object(ref prop)) => {
+                generate_placement_from_single_property(prop)
+            }
+            _ => quote!(Default::default()),
+        };
 
-    let grid_row_start = match style["gridRowStart"] {
-        json::JsonValue::Object(ref value) => {
-            let grid_line = generate_grid_line(value);
-            quote!(grid_row_start: #grid_line,)
-        }
-        _ => quote!(),
-    };
-
-    let grid_row_end = match style["gridRowEnd"] {
-        json::JsonValue::Object(ref value) => {
-            let grid_line = generate_grid_line(value);
-            quote!(grid_row_end: #grid_line,)
-        }
-        _ => quote!(),
-    };
-
-    let grid_column_start = match style["gridColumnStart"] {
-        json::JsonValue::Object(ref value) => {
-            let grid_line = generate_grid_line(value);
-            quote!(grid_column_start: #grid_line,)
-        }
-        _ => quote!(),
-    };
-
-    let grid_column_end = match style["gridColumnEnd"] {
-        json::JsonValue::Object(ref value) => {
-            let grid_line = generate_grid_line(value);
-            quote!(grid_column_end: #grid_line,)
-        }
-        _ => quote!(),
+        quote!(grid_item: stretch::style::Style::GridItem { row: #row_placement, column: #column_placement },)
     };
 
     let grid_gaps = match style["gridGap"] {
@@ -441,22 +423,6 @@ fn generate_node(ident: &str, node: &json::JsonValue) -> TokenStream {
                 _ => 0.0,
             };
             quote!(grid_gaps: stretch::geometry::Size {width: #width, height: #height},)
-        }
-        _ => quote!(),
-    };
-
-    let grid_columns = match style["gridColumns"] {
-        json::JsonValue::Array(ref value) => {
-            let def = generate_grid_tracks_definition(value);
-            quote!(grid_columns_template: #def)
-        }
-        _ => quote!(),
-    };
-
-    let grid_rows = match style["gridRows"] {
-        json::JsonValue::Array(ref value) => {
-            let def = generate_grid_tracks_definition(value);
-            quote!(grid_rows_template: #def)
         }
         _ => quote!(),
     };
@@ -542,16 +508,11 @@ fn generate_node(ident: &str, node: &json::JsonValue) -> TokenStream {
             #flex_grow
             #flex_shrink
             #flex_basis
-            #grid_area
-            #grid_template_row_bounds
-            #grid_template_column_bounds
-            #grid_row_start
-            #grid_row_end
-            #grid_column_start
-            #grid_column_end
+
+            #grid_template
+            #grid_item
             #grid_gaps
-            #grid_columns
-            #grid_rows
+
             #size
             #min_size
             #max_size
@@ -609,80 +570,111 @@ fn generate_dimension(dimen: &json::object::Object) -> TokenStream {
     }
 }
 
-fn generate_grid_area(grid_area: &json::object::Object) -> TokenStream {
-    let kind = grid_area.get("kind").unwrap();
-
-    match kind {
-        json::JsonValue::Short(ref kind) => match kind.as_ref() {
-            "auto" => quote!(stretch::style::GridArea::Auto),
-            "explicit" => {
-                let value = grid_area.get("value").unwrap();
-                let row_start = value[0].as_f32().unwrap() as i32;
-                let row_end = value[1].as_f32().unwrap() as i32;
-                let column_start = value[2].as_f32().unwrap() as i32;
-                let column_end = value[3].as_f32().unwrap() as i32;
-                quote!(stretch::style::GridArea::Manual{row_start:#row_start, row_end:#row_end, column_start:#column_start, column_end:#column_end})
-            }
-            _ => unreachable!(),
-        },
-        _ => unreachable!(),
-    }
-}
-
-fn generate_track_bounds_list(track_bounds_list: &json::Array) -> TokenStream {
-    let track_bounds_list: Vec<TokenStream> = track_bounds_list
+fn generate_track_list(track_list: &json::Array) -> TokenStream {
+    let track_bounds_list: Vec<TokenStream> = track_list
         .iter()
         .map(|val| match val {
-            json::JsonValue::Array(ref arr) => arr,
+            json::JsonValue::Object(ref obj) => generate_track_size(obj),
             _ => unreachable!(),
-        })
-        .map(|arr| {
-            let (min_val, max_val) = match (&arr[0], &arr[1]) {
-                (json::JsonValue::Object(ref v0), json::JsonValue::Object(ref v1)) => {
-                    (generate_track_size(v0), generate_track_size(v1))
-                }
-                _ => unreachable!(),
-            };
-            quote!(stretch::style::TrackSizeBounds {min: #min_val, max: #max_val})
         })
         .collect();
 
     quote!(vec![#(#track_bounds_list),*])
 }
 
-fn generate_grid_line(grid_line: &json::object::Object) -> TokenStream {
-    let kind = grid_line.get("kind").unwrap();
+fn generate_placement_from_single_property(property: &json::object::Object) -> TokenStream {
+    let unit = property.get("unit").unwrap();
 
-    match kind {
-        json::JsonValue::Short(ref kind) => match kind.as_ref() {
-            "nth" => {
-                let value = grid_line.get("value").unwrap().as_f32().unwrap() as i32;
-                quote!(stretch::style::GridLine::Nth(#value))
+    match unit {
+        json::JsonValue::Short(ref unit) => match unit.as_ref() {
+            "auto" => quote!(stretch::style::GridItemPlacement::Auto(1)),
+            "span" => {
+                let value = property.get("value").unwrap().as_u16().unwrap() as u16;
+                quote!(stretch::style::GridItemPlacement::Auto(#value))
             }
-            _ => unreachable!("Unsupported kind for grid-line: {}", kind),
+            "position" => {
+                let value = property.get("value").unwrap().as_i16().unwrap() as i16;
+                let line = if value > 0 {
+                    let value = value as u16;
+                    quote!(stretch::style::GridLine::FromStart(#value))
+                } else {
+                    let value = (-1 * value) as u16;
+                    quote!(stretch::style::GridLine::FromEnd(#value))
+                };
+
+                quote!(stretch::style::GridItemPlacement::ExplicitSpan { start: #line, span: 1 })
+            }
+            _ => unreachable!(),
         },
         _ => unreachable!(),
     }
 }
 
-fn generate_grid_tracks_definition(track_def: &json::Array) -> TokenStream {
-    let track_sizes: Vec<TokenStream> = track_def
-        .iter()
-        .map(|val| match val {
-            json::JsonValue::Object(ref value) => generate_track_size(value),
-            _ => unreachable!(),
-        })
-        .collect();
-    let mut track_defs: Vec<TokenStream> = (0..track_sizes.len())
-        .step_by(2)
-        .map(|i| {
-            let min_val = &track_sizes[i];
-            let max_val = &track_sizes[i + 1];
-            quote!(stretch::style::TrackSizeBounds {min: #min_val, max: #max_val})
-        })
-        .collect();
-    let fill = track_defs.pop();
-    quote!(stretch::style::GridTracksTemplate {fill:#fill, defined:Some(vec![#(#track_defs),*])},)
+fn generate_placement_from_two_properties(start: &json::object::Object, end: &json::object::Object) -> TokenStream {
+    let start_unit = start.get("unit").unwrap();
+    let end_unit = end.get("unit").unwrap();
+
+    match (start_unit, end_unit) {
+        (json::JsonValue::Short(ref start_unit), json::JsonValue::Short(ref end_unit)) => {
+            match (start_unit.as_ref(), end_unit.as_ref()) {
+                ("auto", "auto") => quote!(stretch::style::GridItemPlacement::Auto(1)),
+                ("auto", _) => generate_placement_from_single_property(end),
+                (_, "auto") => generate_placement_from_single_property(start),
+                ("position", "position") => {
+                    let start_value = start.get("value").unwrap().as_i32().unwrap() as i16;
+                    let start_line = if start_value > 0 {
+                        let start_value = start_value as u16;
+                        quote!(stretch::style::GridLine::FromStart(#start_value))
+                    } else {
+                        let start_value = (-1 * start_value) as u16;
+                        quote!(stretch::style::GridLine::FromEnd(#start_value))
+                    };
+
+                    let end_value = end.get("value").unwrap().as_i32().unwrap() as i16;
+                    let end_line = if end_value > 0 {
+                        let end_value = end_value as u16;
+                        quote!(stretch::style::GridLine::FromStart(#end_value))
+                    } else {
+                        let end_value = (-1 * end_value) as u16;
+                        quote!(stretch::style::GridLine::FromEnd(#end_value))
+                    };
+
+                    quote!(stretch::style::GridItemPlacement::ImplicitSpan { start: #start_line, end: #end_line})
+                }
+                ("position", "span") => {
+                    let pos_value = start.get("value").unwrap().as_i32().unwrap() as i16;
+                    let span_value = end.get("value").unwrap().as_i32().unwrap() as u16;
+
+                    let pos_line = if pos_value > 0 {
+                        let pos_value = pos_value as u16;
+                        quote!(stretch::style::GridLine::FromStart(#pos_value))
+                    } else {
+                        let pos_value = (-1 * pos_value) as u16;
+                        quote!(stretch::style::GridLine::FromEnd(#pos_value))
+                    };
+
+                    quote!(stretch::style::GridItemPlacement::ExplicitSpan { start: #pos_line, span: #span_value})
+                }
+                ("span", "position") => {
+                    let span_value = start.get("value").unwrap().as_i32().unwrap() as u16;
+                    let pos_value = end.get("value").unwrap().as_i32().unwrap() as i16;
+
+                    let pos_line = if pos_value > 0 {
+                        let start_pos_value = (pos_value - span_value as i16).max(1) as u16;
+                        quote!(stretch::style::GridLine::FromStart(#start_pos_value))
+                    } else {
+                        let start_pos_value = pos_value - span_value as i16;
+                        let start_pos_value = (-1 * (start_pos_value)) as u16;
+                        quote!(stretch::style::GridLine::FromEnd(#start_pos_value))
+                    };
+
+                    quote!(stretch::style::GridItemPlacement::ExplicitSpan { start: #pos_line, span: #span_value})
+                }
+                _ => unreachable!(),
+            }
+        }
+        _ => unreachable!(),
+    }
 }
 
 fn generate_track_size(grid_size_value: &json::object::Object) -> TokenStream {
@@ -691,25 +683,25 @@ fn generate_track_size(grid_size_value: &json::object::Object) -> TokenStream {
 
     match unit {
         json::JsonValue::Short(ref unit) => match unit.as_ref() {
-            "auto" => quote!(stretch::style::TrackSizeValues::Auto),
-            "min-content" => quote!(stretch::style::TrackSizeValues::MinContent),
-            "max-content" => quote!(stretch::style::TrackSizeValues::MaxContent),
+            "auto" => quote!(stretch::style::TrackSizingFunction::Auto),
+            "min-content" => quote!(stretch::style::TrackSizingFunction::MinContent),
+            "max-content" => quote!(stretch::style::TrackSizingFunction::MaxContent),
             "points" => {
                 let val = value();
-                quote!(stretch::style::TrackSizeValues::Points(#val))
+                quote!(stretch::style::TrackSizingFunction::Points(#val))
             }
             "percent" => {
                 let val = value();
-                quote!(stretch::style::TrackSizeValues::Percent(#val))
+                quote!(stretch::style::TrackSizingFunction::Percent(#val))
             }
             "flex" => {
                 let val = value();
-                quote!(stretch::style::TrackSizeValues::Flex(#val))
+                quote!(stretch::style::TrackSizingFunction::Flex(#val))
             }
-            "auto-capped" => {
-                let val = value();
-                quote!(stretch::style::TrackSizeValues::ClampedAuto(#val))
-            }
+            // "auto-capped" => {
+            //     let val = value();
+            //     quote!(stretch::style::TrackSizeValues::ClampedAuto(#val))
+            // }
             _ => unreachable!(),
         },
         _ => unreachable!(),

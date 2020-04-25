@@ -98,70 +98,27 @@ impl Default for Display {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
 #[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
-pub enum TrackSizeValues {
+pub enum TrackSizingFunction {
     Auto,
     MinContent,
     MaxContent,
     Points(f32),
     Percent(f32),
     Flex(f32),
-    ClampedAuto(f32),
-}
-
-impl Default for TrackSizeValues {
-    fn default() -> TrackSizeValues {
-        TrackSizeValues::Auto
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
-#[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
-pub struct TrackSizeBounds {
-    pub min: TrackSizeValues,
-    pub max: TrackSizeValues,
-}
-
-impl TrackSizeBounds {
-    pub fn new(val: TrackSizeValues) -> Self {
-        TrackSizeBounds { min: val, max: val }
-    }
-}
-
-impl Default for TrackSizeBounds {
-    fn default() -> TrackSizeBounds {
-        TrackSizeBounds { min: Default::default(), max: Default::default() }
-    }
 }
 
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
 #[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
-pub struct GridTracksTemplate {
-    pub fill: TrackSizeBounds,
-    pub defined: Option<Vec<TrackSizeBounds>>,
+pub struct GridTemplate {
+    pub rows: Vec<TrackSizingFunction>,
+    pub columns: Vec<TrackSizingFunction>,
 }
 
-impl Default for GridTracksTemplate {
-    fn default() -> GridTracksTemplate {
-        GridTracksTemplate { fill: Default::default(), defined: None }
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
-#[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
-pub enum GridArea {
-    Auto,
-    Manual { row_start: i32, row_end: i32, column_start: i32, column_end: i32 },
-}
-
-impl Default for GridArea {
-    fn default() -> GridArea {
-        GridArea::Auto
+impl Default for GridTemplate {
+    fn default() -> GridTemplate {
+        GridTemplate { rows: vec![], columns: vec![] }
     }
 }
 
@@ -170,15 +127,47 @@ impl Default for GridArea {
 #[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
 #[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
 pub enum GridLine {
-    // Auto,
-    // NamedGridArea,
-    Nth(i32 /* TODO support identifier */),
-    // Span
+    FromStart(u16),
+    FromEnd(u16),
 }
 
-impl Default for GridLine {
-    fn default() -> GridLine {
-        GridLine::Nth(1)
+impl GridLine {
+    pub(crate) fn resolve(self, explicit_lines: u16) -> i32 {
+        match self {
+            GridLine::FromStart(line) => line as i32,
+            GridLine::FromEnd(line) => (explicit_lines as i32) - (line as i32 - 1),
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
+#[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
+pub enum GridItemPlacement {
+    Auto(u16),
+    ExplicitSpan { start: GridLine, span: u16 },
+    ImplicitSpan { start: GridLine, end: GridLine },
+}
+
+impl Default for GridItemPlacement {
+    fn default() -> GridItemPlacement {
+        GridItemPlacement::Auto(1)
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
+#[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
+pub struct GridItem {
+    pub row: GridItemPlacement,
+    pub column: GridItemPlacement,
+}
+
+impl Default for GridItem {
+    fn default() -> GridItem {
+        GridItem { row: Default::default(), column: Default::default() }
     }
 }
 
@@ -349,16 +338,9 @@ pub struct Style {
     pub flex_grow: f32,
     pub flex_shrink: f32,
     pub flex_basis: Dimension,
-    pub grid_area: GridArea,
-    pub grid_template_row_bounds: Vec<TrackSizeBounds>,
-    pub grid_template_column_bounds: Vec<TrackSizeBounds>,
-    pub grid_row_start: GridLine,
-    pub grid_row_end: GridLine,
-    pub grid_column_start: GridLine,
-    pub grid_column_end: GridLine,
+    pub grid_template: GridTemplate,
+    pub grid_item: GridItem,
     pub grid_gaps: Size<f32>,
-    pub grid_rows_template: GridTracksTemplate,
-    pub grid_columns_template: GridTracksTemplate,
     pub size: Size<Dimension>,
     pub min_size: Size<Dimension>,
     pub max_size: Size<Dimension>,
@@ -385,16 +367,11 @@ impl Default for Style {
             flex_grow: 0.0,
             flex_shrink: 1.0,
             flex_basis: Dimension::Auto,
-            grid_area: Default::default(),
-            grid_template_row_bounds: vec![],
-            grid_template_column_bounds: vec![],
-            grid_row_start: Default::default(),
-            grid_row_end: Default::default(),
-            grid_column_start: Default::default(),
-            grid_column_end: Default::default(),
+
+            grid_template: Default::default(),
+            grid_item: Default::default(),
             grid_gaps: Size { width: 0.0, height: 0.0 },
-            grid_rows_template: Default::default(),
-            grid_columns_template: Default::default(),
+
             size: Default::default(),
             min_size: Default::default(),
             max_size: Default::default(),

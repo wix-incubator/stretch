@@ -29,31 +29,36 @@ enum GrowthLimit {
 struct TrackSize {
     base_size: f32,
     growth_limit: GrowthLimit,
-    bounds: TrackSizeBounds,
+    min: TrackSizingFunction,
+    max: TrackSizingFunction,
 }
 
 impl TrackSize {
-    fn new(bounds: &TrackSizeBounds, container_size: &Number) -> Self {
-        let base_size = match (bounds.min, container_size) {
-            (TrackSizeValues::Points(pts), _) => pts,
-            (TrackSizeValues::Percent(percentage), Number::Defined(pts)) => pts * percentage,
+    fn new(sizing_fn: TrackSizingFunction, container_size: &Number) -> Self {
+        let base_size = match (sizing_fn, container_size) {
+            (TrackSizingFunction::Points(pts), _) => pts,
+            (TrackSizingFunction::Percent(percentage), Number::Defined(pts)) => pts * percentage,
             _ => 0.,
         };
-        let growth_limit = match (bounds.max, container_size) {
-            (TrackSizeValues::Flex(_), _) => GrowthLimit::Finite(base_size),
-            (TrackSizeValues::Points(pts), _) => GrowthLimit::Finite(base_size.max(pts)),
-            (TrackSizeValues::Percent(percentage), Number::Defined(pts)) => {
+        let growth_limit = match (sizing_fn, container_size) {
+            (TrackSizingFunction::Flex(_), _) => GrowthLimit::Finite(base_size),
+            (TrackSizingFunction::Points(pts), _) => GrowthLimit::Finite(base_size.max(pts)),
+            (TrackSizingFunction::Percent(percentage), Number::Defined(pts)) => {
                 GrowthLimit::Finite(base_size.max(pts * percentage))
             }
             _ => GrowthLimit::Infinite,
         };
-        Self { growth_limit, base_size, bounds: *bounds }
-    }
-}
+        let min = match sizing_fn {
+            TrackSizingFunction::Flex(_) => TrackSizingFunction::Auto,
+            _ => sizing_fn,
+        };
+        let max = match sizing_fn {
+            TrackSizingFunction::Auto => TrackSizingFunction::MaxContent,
+            _ => sizing_fn,
+        };
 
-struct GridAxisPlacement {
-    position: i32,
-    span: i32,
+        Self { growth_limit, base_size, min, max }
+    }
 }
 
 struct FlexItem {
@@ -194,8 +199,8 @@ impl Forest {
         };
 
         let container_style = &self.nodes[node].style;
-        let max_row_lines = container_style.grid_template_row_bounds.len() as i32 + 1;
-        let max_column_lines = container_style.grid_template_column_bounds.len() as i32 + 1;
+        let max_row_lines = container_style.grid_template.rows.len() as u16 + 1;
+        let max_column_lines = container_style.grid_template.columns.len() as u16 + 1;
 
         let visible_children: Vec<NodeId> = self.children[node]
             .iter()
@@ -203,69 +208,86 @@ impl Forest {
             .map(|child| child.clone())
             .collect();
 
-        fn resolve_axis_placement(start: GridLine, end: GridLine, max: i32) -> GridAxisPlacement {
-            match (start, end) {
-                (GridLine::Nth(start), GridLine::Nth(end)) => {
-                    let start = if start < 0 { 1.max(start + max) } else { start };
-                    let end = if end < 0 { 1.max(end + max) } else { end };
+        // fn resolve_axis_placement(start: GridLine, end: GridLine, max: i32) -> GridAxisPlacement {
+        //     match (start, end) {
+        //         (GridLine::Nth(start), GridLine::Nth(end)) => {
+        //             let start = if start < 0 { 1.max(start + max) } else { start };
+        //             let end = if end < 0 { 1.max(end + max) } else { end };
 
-                    let position = start.min(end);
-                    let span = start.max(end) - position;
-                    GridAxisPlacement { position, span: span.max(1) }
-                }
-            }
-        }
+        //             let position = start.min(end);
+        //             let span = start.max(end) - position;
+        //             GridAxisPlacement { position, span: span.max(1) }
+        //         }
+        //     }
+        // }
 
         let grid_placements: Vec<(&usize, Rect<i32>)> = visible_children
             .iter()
             .map(|child| (child, &self.nodes[*child].style))
             .map(|(child, style)| {
-                let row = resolve_axis_placement(style.grid_row_start, style.grid_row_end, max_row_lines);
-                let col = resolve_axis_placement(style.grid_column_start, style.grid_column_end, max_column_lines);
+                let (start, end) = match style.grid_item.column {
+                    GridItemPlacement::Auto(_) => panic!("AutoPlacement of GridItems is not supported yet"),
+                    GridItemPlacement::ImplicitSpan { start, end } => {
+                        let start = start.resolve(max_column_lines);
+                        let end = end.resolve(max_column_lines);
+                        (start.min(end), start.max(end))
+                    }
+                    GridItemPlacement::ExplicitSpan { start, span } => {
+                        let start = start.resolve(max_column_lines);
+                        (start, start + span as i32)
+                    }
+                };
 
-                return (
-                    child,
-                    Rect {
-                        start: col.position,
-                        end: col.position + col.span,
-                        top: row.position,
-                        bottom: row.position + row.span,
-                    },
-                );
+                let (top, bottom) = match style.grid_item.row {
+                    GridItemPlacement::Auto(_) => panic!("AutoPlacement of GridItems is not supported yet"),
+                    GridItemPlacement::ImplicitSpan { start, end } => {
+                        let top = start.resolve(max_row_lines);
+                        let bottom = end.resolve(max_row_lines);
+                        (top.min(bottom), top.max(bottom))
+                    }
+                    GridItemPlacement::ExplicitSpan { start, span } => {
+                        let top = start.resolve(max_row_lines);
+                        (top, top + span as i32)
+                    }
+                };
+
+                return (child, Rect { start, end, top, bottom });
             })
             .collect();
 
         let implicit_column_lines =
-            grid_placements.iter().map(|(_, placement)| placement.end - max_column_lines).max().unwrap_or(0);
+            grid_placements.iter().map(|(_, placement)| placement.end - max_column_lines as i32).max().unwrap_or(0);
 
         let implicit_column_sizes = (1..=implicit_column_lines).map(|_| {
             TrackSize::new(
-                &TrackSizeBounds::new(TrackSizeValues::Auto), // TODO should be container_style.grid_auto_columns
+                TrackSizingFunction::Auto, // TODO should be container_style.grid_auto_columns
                 &node_size.main(FlexDirection::Row),
             )
         });
 
         let explicit_column_sizes = container_style
-            .grid_template_column_bounds
+            .grid_template
+            .columns
             .iter()
-            .map(|bounds| TrackSize::new(bounds, &node_size.main(FlexDirection::Row)));
+            .map(|sizing_fn| TrackSize::new(*sizing_fn, &node_size.main(FlexDirection::Row)));
 
         let mut column_sizes: Vec<TrackSize> = explicit_column_sizes.chain(implicit_column_sizes).collect();
 
         let implicit_row_lines =
-            grid_placements.iter().map(|(_, placement)| placement.bottom - max_row_lines).max().unwrap_or(0);
+            grid_placements.iter().map(|(_, placement)| placement.bottom - max_row_lines as i32).max().unwrap_or(0);
 
         let implicit_row_sizes = (1..=implicit_row_lines).map(|_| {
             TrackSize::new(
-                &TrackSizeBounds::new(TrackSizeValues::Auto), // TODO should be container_style.grid_auto_rows
+                TrackSizingFunction::Auto, // TODO should be container_style.grid_auto_rows
                 &node_size.main(FlexDirection::Column),
             )
         });
 
         let explicit_row_sizes = container_style
-            .grid_template_row_bounds
+            .grid_template
+            .rows
             .iter()
-            .map(|bounds| TrackSize::new(bounds, &node_size.main(FlexDirection::Column)));
+            .map(|sizing_fn| TrackSize::new(*sizing_fn, &node_size.main(FlexDirection::Column)));
 
         let mut row_sizes: Vec<TrackSize> = explicit_row_sizes.chain(implicit_row_sizes).collect();
 
@@ -282,9 +304,8 @@ impl Forest {
 
         {
             let auto_column_count =
-                column_sizes.iter().filter(|track_size| track_size.bounds.max == TrackSizeValues::Auto).count() as f32;
-            let auto_columns =
-                column_sizes.iter_mut().filter(|track_size| track_size.bounds.max == TrackSizeValues::Auto);
+                column_sizes.iter().filter(|track_size| track_size.max == TrackSizingFunction::Auto).count() as f32;
+            let auto_columns = column_sizes.iter_mut().filter(|track_size| track_size.max == TrackSizingFunction::Auto);
             let free_space_per_column = free_space.width.or_else(0.) / auto_column_count;
             for mut col_size in auto_columns {
                 col_size.base_size = free_space_per_column;
@@ -293,8 +314,8 @@ impl Forest {
 
         {
             let auto_row_count =
-                row_sizes.iter().filter(|track_size| track_size.bounds.max == TrackSizeValues::Auto).count() as f32;
-            let auto_rows = row_sizes.iter_mut().filter(|track_size| track_size.bounds.max == TrackSizeValues::Auto);
+                row_sizes.iter().filter(|track_size| track_size.max == TrackSizingFunction::Auto).count() as f32;
+            let auto_rows = row_sizes.iter_mut().filter(|track_size| track_size.max == TrackSizingFunction::Auto);
             let free_space_per_row = free_space.height.or_else(0.) / auto_row_count;
             for mut row_size in auto_rows {
                 row_size.base_size = free_space_per_row;

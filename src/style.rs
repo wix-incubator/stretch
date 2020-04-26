@@ -112,7 +112,8 @@ pub enum TrackSizeMax {
 impl TrackSizeMax {
     pub fn from_inflexible(inflexible: InflexibleSize) -> TrackSizeMax {
         match inflexible {
-            InflexibleSize::MaxContent | InflexibleSize::Auto => TrackSizeMax::MaxContent,
+            InflexibleSize::Auto => TrackSizeMax::Auto,
+            InflexibleSize::MaxContent => TrackSizeMax::MaxContent,
             InflexibleSize::MinContent => TrackSizeMax::MinContent,
             InflexibleSize::Points(x) => TrackSizeMax::Points(x),
             InflexibleSize::Percent(x) => TrackSizeMax::Percent(x),

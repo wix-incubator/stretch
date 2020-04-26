@@ -212,27 +212,14 @@ impl Forest {
         };
 
         let container_style = &self.nodes[node].style;
-        let max_row_lines = container_style.grid_template.rows.len() as u16 + 1;
-        let max_column_lines = container_style.grid_template.columns.len() as u16 + 1;
+        let explicit_row_count = container_style.grid_template.rows.len() as u16 + 1;
+        let explicit_column_count = container_style.grid_template.columns.len() as u16 + 1;
 
         let visible_children: Vec<NodeId> = self.children[node]
             .iter()
             .filter(|child| self.nodes[**child].style.display != Display::None)
             .map(|child| child.clone())
             .collect();
-
-        // fn resolve_axis_placement(start: GridLine, end: GridLine, max: i32) -> GridAxisPlacement {
-        //     match (start, end) {
-        //         (GridLine::Nth(start), GridLine::Nth(end)) => {
-        //             let start = if start < 0 { 1.max(start + max) } else { start };
-        //             let end = if end < 0 { 1.max(end + max) } else { end };
-
-        //             let position = start.min(end);
-        //             let span = start.max(end) - position;
-        //             GridAxisPlacement { position, span: span.max(1) }
-        //         }
-        //     }
-        // }
 
         let grid_placements: Vec<(&usize, Rect<i32>)> = visible_children
             .iter()
@@ -241,12 +228,17 @@ impl Forest {
                 let (start, end) = match style.grid_item.column {
                     GridItemPlacement::Auto(_) => panic!("AutoPlacement of GridItems is not supported yet"),
                     GridItemPlacement::ImplicitSpan { start, end } => {
-                        let start = start.resolve(max_column_lines);
-                        let end = end.resolve(max_column_lines);
-                        (start.min(end), start.max(end))
+                        let start = start.resolve(explicit_column_count);
+                        let end = end.resolve(explicit_column_count);
+
+                        if start == end {
+                            (start, start + 1)
+                        } else {
+                            (start.min(end), start.max(end))
+                        }
                     }
                     GridItemPlacement::ExplicitSpan { start, span } => {
-                        let start = start.resolve(max_column_lines);
+                        let start = start.resolve(explicit_column_count);
                         (start, start + span as i32)
                     }
                 };
@@ -254,12 +246,17 @@ impl Forest {
                 let (top, bottom) = match style.grid_item.row {
                     GridItemPlacement::Auto(_) => panic!("AutoPlacement of GridItems is not supported yet"),
                     GridItemPlacement::ImplicitSpan { start, end } => {
-                        let top = start.resolve(max_row_lines);
-                        let bottom = end.resolve(max_row_lines);
-                        (top.min(bottom), top.max(bottom))
+                        let top = start.resolve(explicit_row_count);
+                        let bottom = end.resolve(explicit_row_count);
+
+                        if top == bottom {
+                            (top, top + 1)
+                        } else {
+                            (top.min(bottom), top.max(bottom))
+                        }
                     }
                     GridItemPlacement::ExplicitSpan { start, span } => {
-                        let top = start.resolve(max_row_lines);
+                        let top = start.resolve(explicit_row_count);
                         (top, top + span as i32)
                     }
                 };
@@ -268,10 +265,14 @@ impl Forest {
             })
             .collect();
 
-        let implicit_column_lines =
-            grid_placements.iter().map(|(_, placement)| placement.end - max_column_lines as i32).max().unwrap_or(0);
 
-        let implicit_column_sizes = (1..=implicit_column_lines).map(|_| {
+        let implicit_column_count = grid_placements
+            .iter()
+            .map(|(_, placement)| placement.end - explicit_column_count as i32)
+            .max()
+            .unwrap_or(0);
+
+        let implicit_column_sizes = (1..=implicit_column_count).map(|_| {
             TrackSize::new(
                 TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_columns
                 &node_size.main(FlexDirection::Row),
@@ -286,10 +287,13 @@ impl Forest {
 
         let mut column_sizes: Vec<TrackSize> = explicit_column_sizes.chain(implicit_column_sizes).collect();
 
-        let implicit_row_lines =
-            grid_placements.iter().map(|(_, placement)| placement.bottom - max_row_lines as i32).max().unwrap_or(0);
+        let implicit_row_count = grid_placements
+            .iter()
+            .map(|(_, placement)| placement.bottom - explicit_row_count as i32)
+            .max()
+            .unwrap_or(0);
 
-        let implicit_row_sizes = (1..=implicit_row_lines).map(|_| {
+        let implicit_row_sizes = (1..=implicit_row_count).map(|_| {
             TrackSize::new(
                 TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_rows
                 &node_size.main(FlexDirection::Column),

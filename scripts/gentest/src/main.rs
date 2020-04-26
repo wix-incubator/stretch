@@ -679,29 +679,67 @@ fn generate_placement_from_two_properties(start: &json::object::Object, end: &js
 
 fn generate_track_size(grid_size_value: &json::object::Object) -> TokenStream {
     let unit = grid_size_value.get("unit").unwrap();
-    let value = || grid_size_value.get("value").unwrap().as_f32().unwrap();
 
     match unit {
         json::JsonValue::Short(ref unit) => match unit.as_ref() {
-            "auto" => quote!(stretch::style::TrackSizingFunction::Auto),
-            "min-content" => quote!(stretch::style::TrackSizingFunction::MinContent),
-            "max-content" => quote!(stretch::style::TrackSizingFunction::MaxContent),
+            "auto" | "min-content" | "max-content" | "points" | "percent" => {
+                let val = generate_inflexible_size(grid_size_value);
+                quote!(stretch::style::TrackSizingFunction::Inflexible(#val))
+            }
+            "flex" => {
+                let val = grid_size_value.get("value").unwrap().as_f32().unwrap();
+                quote!(stretch::style::TrackSizingFunction::Flex(#val))
+            }
+            "fit-content-points" => {
+                let val = generate_inflexible_size(grid_size_value);
+                quote!(stretch::style::TrackSizingFunction::FitContentPoints(#val))
+            }
+            "fit-content-percent" => {
+                let val = generate_inflexible_size(grid_size_value);
+                quote!(stretch::style::TrackSizingFunction::FitContentPercent(#val))
+            }
+            "minmax" => {
+                let value = grid_size_value.get("value").unwrap();
+                match value {
+                    json::JsonValue::Array(ref value) => {
+                        let min_val = &value[0];
+                        let max_val = &value[1];
+
+                        match (min_val, max_val) {
+                            (json::JsonValue::Object(ref min_val), json::JsonValue::Object(ref max_val)) => {
+                                let min_val = generate_inflexible_size(min_val);
+                                let max_val = generate_inflexible_size(max_val);
+                                quote!(stretch::style::TrackSizingFunction::MinMax {min: #min_val, max: #max_val })
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            _ => unreachable!(),
+        },
+        _ => unreachable!(),
+    }
+}
+
+fn generate_inflexible_size(inflexible_size: &json::object::Object) -> TokenStream {
+    let unit = inflexible_size.get("unit").unwrap();
+    let value = || inflexible_size.get("value").unwrap().as_f32().unwrap();
+
+    match unit {
+        json::JsonValue::Short(ref unit) => match unit.as_ref() {
+            "auto" => quote!(stretch::style::InflexibleSize::Auto),
+            "min-content" => quote!(stretch::style::InflexibleSize::MinContent),
+            "max-content" => quote!(stretch::style::InflexibleSize::MaxContent),
             "points" => {
                 let val = value();
-                quote!(stretch::style::TrackSizingFunction::Points(#val))
+                quote!(stretch::style::InflexibleSize::Points(#val))
             }
             "percent" => {
                 let val = value();
-                quote!(stretch::style::TrackSizingFunction::Percent(#val))
+                quote!(stretch::style::InflexibleSize::Percent(#val))
             }
-            "flex" => {
-                let val = value();
-                quote!(stretch::style::TrackSizingFunction::Flex(#val))
-            }
-            // "auto-capped" => {
-            //     let val = value();
-            //     quote!(stretch::style::TrackSizeValues::ClampedAuto(#val))
-            // }
             _ => unreachable!(),
         },
         _ => unreachable!(),

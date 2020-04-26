@@ -63,10 +63,17 @@ function parseGridTemplatesValueHelper(input) {
     case 'min-content':
     case 'max-content':
       return {unit};
-    // case 'minmax':
-    //   return {unit, value};
-    // case 'fit-content':
-    //   return {unit: 'minmax', value:[{unit:'auto'},{...values[0],unit: 'auto-capped'}]};
+    case 'minmax':
+      return {unit, value};
+    case 'fit-content':
+      switch (value[0].unit) {
+        case 'points':
+            return {unit: 'fit-content-points', value: value[0].value};
+        case 'percent':
+            return {unit: 'fit-content-percent', value: value[0].value};
+        default:
+          throw new Error("unsupported GridTemplateValue: " + JSON.stringify({unit, value}))
+      }
     default:
       if (unit.endsWith("px")) {
         return {
@@ -84,7 +91,7 @@ function parseGridTemplatesValueHelper(input) {
           value: Number(unit.replace('fr','')) 
         };
       } else {
-        throw new Error("unsupported GridTemplateValue: " + unit)
+        throw new Error("unsupported GridTemplateValue: " + JSON.stringify({unit, value}))
       }
   }
 }

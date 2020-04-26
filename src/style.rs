@@ -98,13 +98,51 @@ impl Default for Display {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
 #[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
-pub enum TrackSizingFunction {
+pub enum TrackSizeMax {
     Auto,
     MinContent,
     MaxContent,
     Points(f32),
     Percent(f32),
     Flex(f32),
+    ClampedAutoPoints(f32),
+    ClampedAutoPercent(f32),
+}
+
+impl TrackSizeMax {
+    pub fn from_inflexible(inflexible: InflexibleSize) -> TrackSizeMax {
+        match inflexible {
+            InflexibleSize::Auto => TrackSizeMax::Auto,
+            InflexibleSize::MinContent => TrackSizeMax::MinContent,
+            InflexibleSize::MaxContent => TrackSizeMax::MaxContent,
+            InflexibleSize::Points(x) => TrackSizeMax::Points(x),
+            InflexibleSize::Percent(x) => TrackSizeMax::Percent(x),
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
+#[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
+pub enum InflexibleSize {
+    Auto,
+    MinContent,
+    MaxContent,
+    Points(f32),
+    Percent(f32),
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "serde", feature = "serde_kebab_case"), serde(rename_all = "kebab-case"))]
+#[cfg_attr(all(feature = "serde", feature = "serde_camel_case"), serde(rename_all = "camelCase"))]
+pub enum TrackSizingFunction {
+    Inflexible(InflexibleSize),
+    Flex(f32),
+    FitContentPoints(f32),
+    FitContentPercent(f32),
+    MinMax { min: InflexibleSize, max: InflexibleSize },
 }
 
 #[derive(Clone, PartialEq, Debug)]

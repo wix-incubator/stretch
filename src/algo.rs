@@ -29,32 +29,45 @@ enum GrowthLimit {
 struct TrackSize {
     base_size: f32,
     growth_limit: GrowthLimit,
-    min: TrackSizingFunction,
-    max: TrackSizingFunction,
+    min: InflexibleSize,
+    max: TrackSizeMax,
 }
 
 impl TrackSize {
     fn new(sizing_fn: TrackSizingFunction, container_size: &Number) -> Self {
-        let base_size = match (sizing_fn, container_size) {
-            (TrackSizingFunction::Points(pts), _) => pts,
-            (TrackSizingFunction::Percent(percentage), Number::Defined(pts)) => pts * percentage,
+        let base_size = match sizing_fn {
+            TrackSizingFunction::Inflexible(inflexible_sizing) => match inflexible_sizing {
+                InflexibleSize::Points(pts) => pts,
+                InflexibleSize::Percent(percentage) => percentage * container_size.or_else(0.),
+                _ => 0.,
+            },
             _ => 0.,
         };
-        let growth_limit = match (sizing_fn, container_size) {
-            (TrackSizingFunction::Flex(_), _) => GrowthLimit::Finite(base_size),
-            (TrackSizingFunction::Points(pts), _) => GrowthLimit::Finite(base_size.max(pts)),
-            (TrackSizingFunction::Percent(percentage), Number::Defined(pts)) => {
-                GrowthLimit::Finite(base_size.max(pts * percentage))
-            }
+
+        let growth_limit = match sizing_fn {
+            TrackSizingFunction::Flex(_) => GrowthLimit::Finite(base_size),
+            TrackSizingFunction::Inflexible(InflexibleSize::Points(pts)) => GrowthLimit::Finite(base_size.max(pts)),
+            TrackSizingFunction::Inflexible(InflexibleSize::Percent(percentage)) => match container_size {
+                Number::Defined(pts) => GrowthLimit::Finite(base_size.max(pts * percentage)),
+                Number::Undefined => GrowthLimit::Infinite,
+            },
             _ => GrowthLimit::Infinite,
         };
+
         let min = match sizing_fn {
-            TrackSizingFunction::Flex(_) => TrackSizingFunction::Auto,
-            _ => sizing_fn,
+            TrackSizingFunction::MinMax { min, .. } => min,
+            TrackSizingFunction::Inflexible(inflexible) => inflexible,
+            TrackSizingFunction::Flex(_) => InflexibleSize::Auto,
+            TrackSizingFunction::FitContentPoints(_) => InflexibleSize::Auto,
+            TrackSizingFunction::FitContentPercent(_) => InflexibleSize::Auto,
         };
+
         let max = match sizing_fn {
-            TrackSizingFunction::Auto => TrackSizingFunction::MaxContent,
-            _ => sizing_fn,
+            TrackSizingFunction::MinMax { min, .. } => TrackSizeMax::from_inflexible(min),
+            TrackSizingFunction::Inflexible(x) => TrackSizeMax::from_inflexible(x),
+            TrackSizingFunction::Flex(x) => TrackSizeMax::Flex(x),
+            TrackSizingFunction::FitContentPoints(x) => TrackSizeMax::ClampedAutoPoints(x),
+            TrackSizingFunction::FitContentPercent(x) => TrackSizeMax::ClampedAutoPercent(x),
         };
 
         Self { growth_limit, base_size, min, max }
@@ -260,7 +273,7 @@ impl Forest {
 
         let implicit_column_sizes = (1..=implicit_column_lines).map(|_| {
             TrackSize::new(
-                TrackSizingFunction::Auto, // TODO should be container_style.grid_auto_columns
+                TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_columns
                 &node_size.main(FlexDirection::Row),
             )
         });
@@ -278,7 +291,7 @@ impl Forest {
 
         let implicit_row_sizes = (1..=implicit_row_lines).map(|_| {
             TrackSize::new(
-                TrackSizingFunction::Auto, // TODO should be container_style.grid_auto_rows
+                TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_rows
                 &node_size.main(FlexDirection::Column),
             )
         });
@@ -304,8 +317,8 @@ impl Forest {
 
         {
             let auto_column_count =
-                column_sizes.iter().filter(|track_size| track_size.max == TrackSizingFunction::Auto).count() as f32;
-            let auto_columns = column_sizes.iter_mut().filter(|track_size| track_size.max == TrackSizingFunction::Auto);
+                column_sizes.iter().filter(|track_size| track_size.max == TrackSizeMax::Auto).count() as f32;
+            let auto_columns = column_sizes.iter_mut().filter(|track_size| track_size.max == TrackSizeMax::Auto);
             let free_space_per_column = free_space.width.or_else(0.) / auto_column_count;
             for mut col_size in auto_columns {
                 col_size.base_size = free_space_per_column;
@@ -314,8 +327,8 @@ impl Forest {
 
         {
             let auto_row_count =
-                row_sizes.iter().filter(|track_size| track_size.max == TrackSizingFunction::Auto).count() as f32;
-            let auto_rows = row_sizes.iter_mut().filter(|track_size| track_size.max == TrackSizingFunction::Auto);
+                row_sizes.iter().filter(|track_size| track_size.max == TrackSizeMax::Auto).count() as f32;
+            let auto_rows = row_sizes.iter_mut().filter(|track_size| track_size.max == TrackSizeMax::Auto);
             let free_space_per_row = free_space.height.or_else(0.) / auto_row_count;
             for mut row_size in auto_rows {
                 row_size.base_size = free_space_per_row;

@@ -190,6 +190,46 @@ impl Forest {
         }
     }
 
+    fn init_track_lines_and_sizes(
+        grid_placements: &Vec<&Rect<i32>>,
+        grid_template_track: &Vec<TrackSizingFunction>,
+        node_size: Size<Number>,
+        direction: FlexDirection,
+    ) -> Vec<(i32, TrackSize)> {
+        let explicit_line_count = grid_template_track.len() as u16 + 1;
+
+        let min_track_line = grid_placements.iter().map(|placement| placement.main_start(direction)).min().unwrap_or(1);
+
+        let max_track_line = grid_placements
+            .iter()
+            .map(|placement| placement.main_end(direction))
+            .max()
+            .unwrap_or(explicit_line_count as i32);
+
+        let startwards_implicit_track_sizes = (min_track_line..1).map(|_| {
+            TrackSize::new(
+                TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_columns
+                &node_size.main(direction),
+            )
+        });
+
+        let explicit_track_sizes =
+            grid_template_track.iter().map(|sizing_fn| TrackSize::new(*sizing_fn, &node_size.main(direction)));
+
+        let endwards_implicit_track_sizes = (explicit_line_count as i32..max_track_line).map(|_| {
+            TrackSize::new(
+                TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_columns
+                &node_size.main(direction),
+            )
+        });
+
+        let track_lines = min_track_line..max_track_line;
+        let track_sizes =
+            startwards_implicit_track_sizes.chain(explicit_track_sizes).chain(endwards_implicit_track_sizes);
+
+        track_lines.zip(track_sizes).collect()
+    }
+
     #[allow(clippy::cognitive_complexity)]
     fn computer_internal_grid(
         &mut self,
@@ -218,7 +258,7 @@ impl Forest {
             .map(|child| child.clone())
             .collect();
 
-        let grid_placements: Vec<(&usize, Rect<i32>)> = visible_children
+        let children_and_placements: Vec<(&usize, Rect<i32>)> = visible_children
             .iter()
             .map(|child| (child, &self.nodes[*child].style))
             .map(|(child, style)| {
@@ -262,65 +302,19 @@ impl Forest {
             })
             .collect();
 
-
-        let min_column_line = grid_placements.iter().map(|(_, placement)| placement.start).min().unwrap_or(1);
-        let max_column_line = grid_placements
-            .iter()
-            .map(|(_, placement)| placement.end)
-            .max()
-            .unwrap_or(explicit_column_line_count as i32);
-
-        let startwards_implicit_column_sizes = (min_column_line..1).map(|_| {
-            TrackSize::new(
-                TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_columns
-                &node_size.main(FlexDirection::Row),
-            )
-        });
-        let explicit_column_sizes = container_style
-            .grid_template
-            .columns
-            .iter()
-            .map(|sizing_fn| TrackSize::new(*sizing_fn, &node_size.main(FlexDirection::Row)));
-        let endwards_implicit_column_sizes = (explicit_column_line_count as i32..max_column_line).map(|_| {
-            TrackSize::new(
-                TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_columns
-                &node_size.main(FlexDirection::Row),
-            )
-        });
-
-        let column_lines = (min_column_line..max_column_line);
-        let column_sizes =
-            startwards_implicit_column_sizes.chain(explicit_column_sizes).chain(endwards_implicit_column_sizes);
-        let mut column_line_and_size_pairs: Vec<(i32, TrackSize)> = column_lines.zip(column_sizes).collect();
-
-        let min_row_line = grid_placements.iter().map(|(_, placement)| placement.top).min().unwrap_or(1);
-        let max_row_line = grid_placements
-            .iter()
-            .map(|(_, placement)| placement.bottom)
-            .max()
-            .unwrap_or(explicit_row_line_count as i32);
-
-        let startwards_implicit_row_sizes = (min_row_line..1).map(|_| {
-            TrackSize::new(
-                TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_rows
-                &node_size.main(FlexDirection::Column),
-            )
-        });
-        let explicit_row_sizes = container_style
-            .grid_template
-            .rows
-            .iter()
-            .map(|sizing_fn| TrackSize::new(*sizing_fn, &node_size.main(FlexDirection::Column)));
-        let endwards_implicit_row_sizes = (explicit_row_line_count as i32..max_row_line).map(|_| {
-            TrackSize::new(
-                TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_rows
-                &node_size.main(FlexDirection::Column),
-            )
-        });
-
-        let row_lines = min_row_line..max_row_line;
-        let row_sizes = startwards_implicit_row_sizes.chain(explicit_row_sizes).chain(endwards_implicit_row_sizes);
-        let mut row_line_and_size_pairs: Vec<(i32, TrackSize)> = row_lines.zip(row_sizes).collect();
+        let grid_placements = children_and_placements.iter().map(|(_, p)| p).collect();
+        let mut column_line_and_size_pairs = Self::init_track_lines_and_sizes(
+            &grid_placements,
+            &container_style.grid_template.columns,
+            node_size,
+            FlexDirection::Row,
+        );
+        let mut row_line_and_size_pairs = Self::init_track_lines_and_sizes(
+            &grid_placements,
+            &container_style.grid_template.rows,
+            node_size,
+            FlexDirection::Column,
+        );
 
         // § 11.8. Stretch 'auto' Tracks (https://www.w3.org/TR/css-grid-1/#algo-stretch)
         let used_space: Size<f32> = Size {
@@ -356,7 +350,7 @@ impl Forest {
                 .for_each(|(_, track_size)| track_size.base_size = free_space_per_row);
         }
 
-        for (child, grid_placement) in grid_placements.iter() {
+        for (child, grid_placement) in children_and_placements.iter() {
             let child_horizontal_offset = column_line_and_size_pairs
                 .iter()
                 .filter(|(line, _)| line < &grid_placement.start)

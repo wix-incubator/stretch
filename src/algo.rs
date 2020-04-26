@@ -212,8 +212,8 @@ impl Forest {
         };
 
         let container_style = &self.nodes[node].style;
-        let explicit_row_count = container_style.grid_template.rows.len() as u16 + 1;
-        let explicit_column_count = container_style.grid_template.columns.len() as u16 + 1;
+        let explicit_row_line_count = container_style.grid_template.rows.len() as u16 + 1;
+        let explicit_column_line_count = container_style.grid_template.columns.len() as u16 + 1;
 
         let visible_children: Vec<NodeId> = self.children[node]
             .iter()
@@ -228,8 +228,8 @@ impl Forest {
                 let (start, end) = match style.grid_item.column {
                     GridItemPlacement::Auto(_) => panic!("AutoPlacement of GridItems is not supported yet"),
                     GridItemPlacement::ImplicitSpan { start, end } => {
-                        let start = start.resolve(explicit_column_count);
-                        let end = end.resolve(explicit_column_count);
+                        let start = start.resolve(explicit_column_line_count);
+                        let end = end.resolve(explicit_column_line_count);
 
                         if start == end {
                             (start, start + 1)
@@ -238,7 +238,7 @@ impl Forest {
                         }
                     }
                     GridItemPlacement::ExplicitSpan { start, span } => {
-                        let start = start.resolve(explicit_column_count);
+                        let start = start.resolve(explicit_column_line_count);
                         (start, start + span as i32)
                     }
                 };
@@ -246,8 +246,8 @@ impl Forest {
                 let (top, bottom) = match style.grid_item.row {
                     GridItemPlacement::Auto(_) => panic!("AutoPlacement of GridItems is not supported yet"),
                     GridItemPlacement::ImplicitSpan { start, end } => {
-                        let top = start.resolve(explicit_row_count);
-                        let bottom = end.resolve(explicit_row_count);
+                        let top = start.resolve(explicit_row_line_count);
+                        let bottom = end.resolve(explicit_row_line_count);
 
                         if top == bottom {
                             (top, top + 1)
@@ -256,7 +256,7 @@ impl Forest {
                         }
                     }
                     GridItemPlacement::ExplicitSpan { start, span } => {
-                        let top = start.resolve(explicit_row_count);
+                        let top = start.resolve(explicit_row_line_count);
                         (top, top + span as i32)
                     }
                 };
@@ -266,13 +266,22 @@ impl Forest {
             .collect();
 
 
-        let implicit_column_count = grid_placements
-            .iter()
-            .map(|(_, placement)| placement.end - explicit_column_count as i32)
-            .max()
-            .unwrap_or(0);
+        let min_column_line = grid_placements.iter().map(|(_, placement)| placement.start).min().unwrap_or(1);
 
-        let implicit_column_sizes = (1..=implicit_column_count).map(|_| {
+        let max_column_line = grid_placements
+            .iter()
+            .map(|(_, placement)| placement.end)
+            .max()
+            .unwrap_or(explicit_column_line_count as i32);
+
+        let startwards_implicit_column_sizes = (min_column_line..1).map(|_| {
+            TrackSize::new(
+                TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_columns
+                &node_size.main(FlexDirection::Row),
+            )
+        });
+
+        let endwards_implicit_column_sizes = (explicit_column_line_count as i32..max_column_line).map(|_| {
             TrackSize::new(
                 TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_columns
                 &node_size.main(FlexDirection::Row),
@@ -285,28 +294,40 @@ impl Forest {
             .iter()
             .map(|sizing_fn| TrackSize::new(*sizing_fn, &node_size.main(FlexDirection::Row)));
 
-        let mut column_sizes: Vec<TrackSize> = explicit_column_sizes.chain(implicit_column_sizes).collect();
+        let mut column_sizes: Vec<TrackSize> = startwards_implicit_column_sizes
+            .chain(explicit_column_sizes)
+            .chain(endwards_implicit_column_sizes)
+            .collect();
 
-        let implicit_row_count = grid_placements
+        let min_row_line = grid_placements.iter().map(|(_, placement)| placement.top).min().unwrap_or(1);
+
+        let max_row_line = grid_placements
             .iter()
-            .map(|(_, placement)| placement.bottom - explicit_row_count as i32)
+            .map(|(_, placement)| placement.bottom)
             .max()
-            .unwrap_or(0);
+            .unwrap_or(explicit_row_line_count as i32);
 
-        let implicit_row_sizes = (1..=implicit_row_count).map(|_| {
+        let startwards_implicit_row_sizes = (min_row_line..1).map(|_| {
             TrackSize::new(
                 TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_rows
                 &node_size.main(FlexDirection::Column),
             )
         });
 
+        let endwards_implicit_row_sizes = (explicit_row_line_count as i32..max_row_line).map(|_| {
+            TrackSize::new(
+                TrackSizingFunction::Inflexible(InflexibleSize::Auto), // TODO should be container_style.grid_auto_rows
+                &node_size.main(FlexDirection::Column),
+            )
+        });
         let explicit_row_sizes = container_style
             .grid_template
             .rows
             .iter()
             .map(|sizing_fn| TrackSize::new(*sizing_fn, &node_size.main(FlexDirection::Column)));
 
-        let mut row_sizes: Vec<TrackSize> = explicit_row_sizes.chain(implicit_row_sizes).collect();
+        let mut row_sizes: Vec<TrackSize> =
+            startwards_implicit_row_sizes.chain(explicit_row_sizes).chain(endwards_implicit_row_sizes).collect();
 
         // § 11.8. Stretch 'auto' Tracks (https://www.w3.org/TR/css-grid-1/#algo-stretch)
         let used_space: Size<f32> = Size {

@@ -173,7 +173,7 @@ impl GridLine {
     pub(crate) fn resolve(self, explicit_lines: u16) -> i32 {
         match self {
             GridLine::FromStart(line) => line as i32,
-            GridLine::FromEnd(line) => (explicit_lines as i32) - (line as i32 - 1),
+            GridLine::FromEnd(line) => (explicit_lines as i32) - (line as i32),
         }
     }
 }

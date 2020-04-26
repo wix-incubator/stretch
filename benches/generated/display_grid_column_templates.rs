@@ -3,16 +3,17 @@ pub fn compute() {
     let node0 = stretch
         .new_node(
             stretch::style::Style {
-                grid_area: stretch::style::GridArea::Manual {
-                    row_start: 1i32,
-                    row_end: 1i32,
-                    column_start: 1i32,
-                    column_end: 1i32,
+                grid_template: stretch::style::GridTemplate { rows: vec![], columns: vec![] },
+                grid_item: stretch::style::GridItem {
+                    row: stretch::style::GridItemPlacement::ImplicitSpan {
+                        start: stretch::style::GridLine::FromStart(1u16),
+                        end: stretch::style::GridLine::FromStart(1u16),
+                    },
+                    column: stretch::style::GridItemPlacement::ImplicitSpan {
+                        start: stretch::style::GridLine::FromStart(1u16),
+                        end: stretch::style::GridLine::FromStart(1u16),
+                    },
                 },
-                grid_row_start: stretch::style::GridLine::Nth(1i32),
-                grid_row_end: stretch::style::GridLine::Nth(1i32),
-                grid_column_start: stretch::style::GridLine::Nth(1i32),
-                grid_column_end: stretch::style::GridLine::Nth(1i32),
                 ..Default::default()
             },
             vec![],
@@ -21,16 +22,17 @@ pub fn compute() {
     let node1 = stretch
         .new_node(
             stretch::style::Style {
-                grid_area: stretch::style::GridArea::Manual {
-                    row_start: 1i32,
-                    row_end: 2i32,
-                    column_start: 1i32,
-                    column_end: 2i32,
+                grid_template: stretch::style::GridTemplate { rows: vec![], columns: vec![] },
+                grid_item: stretch::style::GridItem {
+                    row: stretch::style::GridItemPlacement::ImplicitSpan {
+                        start: stretch::style::GridLine::FromStart(1u16),
+                        end: stretch::style::GridLine::FromStart(1u16),
+                    },
+                    column: stretch::style::GridItemPlacement::ImplicitSpan {
+                        start: stretch::style::GridLine::FromStart(2u16),
+                        end: stretch::style::GridLine::FromStart(2u16),
+                    },
                 },
-                grid_row_start: stretch::style::GridLine::Nth(1i32),
-                grid_row_end: stretch::style::GridLine::Nth(1i32),
-                grid_column_start: stretch::style::GridLine::Nth(2i32),
-                grid_column_end: stretch::style::GridLine::Nth(2i32),
                 ..Default::default()
             },
             vec![],
@@ -39,16 +41,17 @@ pub fn compute() {
     let node2 = stretch
         .new_node(
             stretch::style::Style {
-                grid_area: stretch::style::GridArea::Manual {
-                    row_start: 1i32,
-                    row_end: 3i32,
-                    column_start: 1i32,
-                    column_end: 3i32,
+                grid_template: stretch::style::GridTemplate { rows: vec![], columns: vec![] },
+                grid_item: stretch::style::GridItem {
+                    row: stretch::style::GridItemPlacement::ImplicitSpan {
+                        start: stretch::style::GridLine::FromStart(1u16),
+                        end: stretch::style::GridLine::FromStart(1u16),
+                    },
+                    column: stretch::style::GridItemPlacement::ImplicitSpan {
+                        start: stretch::style::GridLine::FromStart(3u16),
+                        end: stretch::style::GridLine::FromStart(3u16),
+                    },
                 },
-                grid_row_start: stretch::style::GridLine::Nth(1i32),
-                grid_row_end: stretch::style::GridLine::Nth(1i32),
-                grid_column_start: stretch::style::GridLine::Nth(3i32),
-                grid_column_end: stretch::style::GridLine::Nth(3i32),
                 ..Default::default()
             },
             vec![],
@@ -57,16 +60,17 @@ pub fn compute() {
     let node3 = stretch
         .new_node(
             stretch::style::Style {
-                grid_area: stretch::style::GridArea::Manual {
-                    row_start: 1i32,
-                    row_end: 4i32,
-                    column_start: 1i32,
-                    column_end: 4i32,
+                grid_template: stretch::style::GridTemplate { rows: vec![], columns: vec![] },
+                grid_item: stretch::style::GridItem {
+                    row: stretch::style::GridItemPlacement::ImplicitSpan {
+                        start: stretch::style::GridLine::FromStart(1u16),
+                        end: stretch::style::GridLine::FromStart(1u16),
+                    },
+                    column: stretch::style::GridItemPlacement::ImplicitSpan {
+                        start: stretch::style::GridLine::FromStart(4u16),
+                        end: stretch::style::GridLine::FromStart(4u16),
+                    },
                 },
-                grid_row_start: stretch::style::GridLine::Nth(1i32),
-                grid_row_end: stretch::style::GridLine::Nth(1i32),
-                grid_column_start: stretch::style::GridLine::Nth(4i32),
-                grid_column_end: stretch::style::GridLine::Nth(4i32),
                 ..Default::default()
             },
             vec![],
@@ -75,16 +79,17 @@ pub fn compute() {
     let node4 = stretch
         .new_node(
             stretch::style::Style {
-                grid_area: stretch::style::GridArea::Manual {
-                    row_start: 1i32,
-                    row_end: 5i32,
-                    column_start: 1i32,
-                    column_end: 5i32,
+                grid_template: stretch::style::GridTemplate { rows: vec![], columns: vec![] },
+                grid_item: stretch::style::GridItem {
+                    row: stretch::style::GridItemPlacement::ImplicitSpan {
+                        start: stretch::style::GridLine::FromStart(1u16),
+                        end: stretch::style::GridLine::FromStart(1u16),
+                    },
+                    column: stretch::style::GridItemPlacement::ImplicitSpan {
+                        start: stretch::style::GridLine::FromStart(5u16),
+                        end: stretch::style::GridLine::FromStart(5u16),
+                    },
                 },
-                grid_row_start: stretch::style::GridLine::Nth(1i32),
-                grid_row_end: stretch::style::GridLine::Nth(1i32),
-                grid_column_start: stretch::style::GridLine::Nth(5i32),
-                grid_column_end: stretch::style::GridLine::Nth(5i32),
                 ..Default::default()
             },
             vec![],
@@ -94,48 +99,15 @@ pub fn compute() {
         .new_node(
             stretch::style::Style {
                 display: stretch::style::Display::Grid,
-                grid_template_column_bounds: vec![
-                    stretch::style::TrackSizeBounds {
-                        min: stretch::style::TrackSizeValues::MinContent,
-                        max: stretch::style::TrackSizeValues::MinContent,
-                    },
-                    stretch::style::TrackSizeBounds {
-                        min: stretch::style::TrackSizeValues::MaxContent,
-                        max: stretch::style::TrackSizeValues::MaxContent,
-                    },
-                    stretch::style::TrackSizeBounds {
-                        min: stretch::style::TrackSizeValues::Points(30f32),
-                        max: stretch::style::TrackSizeValues::Percent(0.5f32),
-                    },
-                    stretch::style::TrackSizeBounds {
-                        min: stretch::style::TrackSizeValues::Flex(1f32),
-                        max: stretch::style::TrackSizeValues::Flex(1f32),
-                    },
-                ],
-                grid_columns_template: stretch::style::GridTracksTemplate {
-                    fill: stretch::style::TrackSizeBounds {
-                        min: stretch::style::TrackSizeValues::Auto,
-                        max: stretch::style::TrackSizeValues::Auto,
-                    },
-                    defined: Some(vec![
-                        stretch::style::TrackSizeBounds {
-                            min: stretch::style::TrackSizeValues::MinContent,
-                            max: stretch::style::TrackSizeValues::MinContent,
-                        },
-                        stretch::style::TrackSizeBounds {
-                            min: stretch::style::TrackSizeValues::MaxContent,
-                            max: stretch::style::TrackSizeValues::MaxContent,
-                        },
-                        stretch::style::TrackSizeBounds {
-                            min: stretch::style::TrackSizeValues::Points(30f32),
-                            max: stretch::style::TrackSizeValues::Percent(0.5f32),
-                        },
-                        stretch::style::TrackSizeBounds {
-                            min: stretch::style::TrackSizeValues::Flex(1f32),
-                            max: stretch::style::TrackSizeValues::Flex(1f32),
-                        },
-                    ]),
+                grid_template: stretch::style::GridTemplate {
+                    rows: vec![],
+                    columns: vec![
+                        stretch::style::TrackSizingFunction::Inflexible(stretch::style::InflexibleSize::MinContent),
+                        stretch::style::TrackSizingFunction::Inflexible(stretch::style::InflexibleSize::MaxContent),
+                        stretch::style::TrackSizingFunction::Flex(1f32),
+                    ],
                 },
+                grid_item: stretch::style::GridItem { row: Default::default(), column: Default::default() },
                 size: stretch::geometry::Size {
                     width: stretch::style::Dimension::Points(200f32),
                     height: stretch::style::Dimension::Points(100f32),

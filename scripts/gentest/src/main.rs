@@ -383,7 +383,7 @@ fn generate_node(ident: &str, node: &json::JsonValue) -> TokenStream {
             _ => quote!(vec![]),
         };
 
-        quote!(grid_template: stretch::style::Style::GridTemplate { rows: #grid_template_rows, columns: #grid_template_columns },)
+        quote!(grid_template: stretch::style::GridTemplate { rows: #grid_template_rows, columns: #grid_template_columns },)
     };
 
     let grid_item = {
@@ -407,7 +407,7 @@ fn generate_node(ident: &str, node: &json::JsonValue) -> TokenStream {
             _ => quote!(Default::default()),
         };
 
-        quote!(grid_item: stretch::style::Style::GridItem { row: #row_placement, column: #column_placement },)
+        quote!(grid_item: stretch::style::GridItem { row: #row_placement, column: #column_placement },)
     };
 
     let grid_gaps = match style["gridGap"] {

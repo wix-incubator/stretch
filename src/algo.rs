@@ -203,9 +203,6 @@ impl Forest {
         padding_border: Rect<f32>,
         node_inner_size: Size<Number>,
     ) -> Result<ComputeResult, Box<dyn Any>> {
-        // Grid Item Placing (https://www.w3.org/TR/css-grid-1/#grid-item-placement-algorithm)
-        // * for now only support - positive index, explicit grid defined lines
-
         let available_space = Size {
             width: node_size.width.or_else(parent_size.width - margin.horizontal()) - padding_border.horizontal(),
             height: node_size.height.or_else(parent_size.height - margin.vertical()) - padding_border.vertical(),
@@ -359,25 +356,25 @@ impl Forest {
                 .for_each(|(_, track_size)| track_size.base_size = free_space_per_row);
         }
 
-        for (child, grid_placements) in grid_placements.iter() {
+        for (child, grid_placement) in grid_placements.iter() {
             let child_horizontal_offset = column_line_and_size_pairs
                 .iter()
-                .filter(|(line, _)| line < &grid_placements.start)
+                .filter(|(line, _)| line < &grid_placement.start)
                 .fold(0., |offset, (_, track_size)| offset + track_size.base_size);
 
             let child_width = column_line_and_size_pairs
                 .iter()
-                .filter(|(line, _)| &grid_placements.start <= line && line < &grid_placements.end)
+                .filter(|(line, _)| &grid_placement.start <= line && line < &grid_placement.end)
                 .fold(Number::Defined(0.), |width, (_, track_size)| width + track_size.base_size);
 
             let child_vertical_offset = row_line_and_size_pairs
                 .iter()
-                .filter(|&(line, _)| line < &grid_placements.top)
+                .filter(|&(line, _)| line < &grid_placement.top)
                 .fold(0., |offset, (_, track_size)| offset + track_size.base_size);
 
             let child_height = row_line_and_size_pairs
                 .iter()
-                .filter(|&(line, _)| &grid_placements.top <= line && line < &grid_placements.bottom)
+                .filter(|&(line, _)| &grid_placement.top <= line && line < &grid_placement.bottom)
                 .fold(Number::Defined(0.), |height, (_, track_size)| height + track_size.base_size);
 
             let child_result = self.compute_internal(
@@ -387,11 +384,13 @@ impl Forest {
                 perform_layout,
             )?;
 
-            self.nodes[**child].layout = result::Layout {
+            let child_layout = result::Layout {
                 order: 0,
                 size: child_result.size,
                 location: Point { x: child_horizontal_offset, y: child_vertical_offset },
             };
+
+            self.nodes[**child].layout = child_layout;
         }
 
         let mut container_size = Size { width: 0.0, height: 0.0 };
@@ -405,7 +404,6 @@ impl Forest {
         }
 
         let result = ComputeResult { size: container_size };
-        // println!("result: {:?}", result);
         self.nodes[node].layout_cache =
             Some(result::Cache { node_size, parent_size, perform_layout, result: result.clone() });
         Ok(result)
